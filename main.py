@@ -93,4 +93,7 @@ async def pay(ctx, member: discord.Member, amount: int):
 
 
 # تشغيل البوت (ضع التوكن الخاص بك هنا)
-bot.run("MTUzOTI3MDg5NjM4MzE3MjYyMA.GS6rnn.W5sKifHCCVf7pvWRwtjApVxzo88j749JDxdcoM")
+import os
+
+bot.run(os.environ.get("BOT_TOKEN"))
+
