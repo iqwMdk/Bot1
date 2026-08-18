@@ -297,7 +297,7 @@ class MainControlView(View):
 @bot.event
 async def on_ready():
     bot.add_view(MainControlView())
-    print(f"✅ تم تشغيل البوت الكامل بالنظامين (الأوامر + الأزرار) باسم: {bot.user.name}")
+    print(f"✅ تم تشغيل البوت المحدث بنجاح باسم: {bot.user.name}")
 
 @bot.command(name="لوحة", aliases=["العقارات", "الرئيسية", "الاوامر", "الأوامر", "مساعدة"])
 async def open_panel(ctx):
@@ -318,17 +318,17 @@ async def open_panel(ctx):
     )
     embed.add_field(
         name="💀 العصابات والسوق الأسود",
-        value="`!انشاء عصابة` | `!العصابات` | `!عصابتي` | `!دعوة @عضو المبلغ` | `!قبول الدعوة` | `!طرد @عضو` | `!مغادرة العصابة` | `!السرقات` | `!بدء سرقة [الرقم]`",
+        value="`!انشاء عصابة [الاسم]` | `!العصابات` | `!عصابتي` | `!دعوة @عضو المبلغ` | `!قبول` | `!طرد @عضو` | `!مغادرة` | `!السرقات` | `!بدء_سرقة [الرقم]`",
         inline=False
     )
     embed.add_field(
         name="📈 الاستثمار والألعاب",
-        value="`!الاسهم` | `!شراء سهم` | `!بيع سهم` | `!سرقة @عضو` | `!غسيل [المبلغ]` | `!حصانة` | `!مزايدة` | `!اليانصيب`",
+        value="`!الاسهم` | `!شراء_سهم [الرمز] [العدد]` | `!بيع_سهم [الرمز] [العدد]` | `!سرقة @عضو` | `!غسيل [المبلغ]` | `!حصانة` | `!مزايدة [المبلغ]` | `!اليانصيب`",
         inline=False
     )
     embed.add_field(
-        name="⚙️ الأوامر الإدارية (للأونر/الإدارة)",
-        value="`!اعطاء @عضو المبلغ` | `!خصم @عضو المبلغ` | `!تصفير @عضو` | `!تصفير الكل` | `!تحديد الحصانة المبلغ` | `!اضافة عقار` | `!تحديث الاسهم` | `!بدء مزاد` | `!انهاء المزاد` | `!سحب اليانصيب`",
+        name="⚙️ الأوامر الإدارية (للإدارة)",
+        value="`!اعطاء @عضو المبلغ` | `!خصم @عضو المبلغ` | `!تصفير @عضو` | `!تصفير الكل` | `!تحديد_الحصانة المبلغ` | `!اضافة_عقار [الاسم] [السعر] [الدخل]` | `!حذف_عقار [الرقم]` | `!سحب_عقار [الرقم]` | `!تحديث_الاسهم` | `!بدء_مزاد [السلعة] [السعر]` | `!انهاء_المزاد` | `!سحب_اليانصيب`",
         inline=False
     )
     await ctx.send(embed=embed, view=MainControlView())
@@ -337,8 +337,8 @@ async def open_panel(ctx):
 # 4. الأوامر العامة والأفراد
 # ---------------------------------------------------------
 
-@bot.command(aliases=["رصيد", "فلوسي"])
-async def رصيدي(ctx):
+@bot.command(name="رصيدي", aliases=["رصيد", "فلوسي"])
+async def my_balance(ctx):
     wallet, bank, dirty, immunity, _ = get_user(ctx.author.id)
     has_immunity = "🛡️ مفعلة" if immunity > time.time() else "❌ غير مفعلة"
     embed = discord.Embed(title=f"💳 رصيد {ctx.author.display_name}", color=discord.Color.green())
@@ -348,9 +348,11 @@ async def رصيدي(ctx):
     embed.add_field(name="🛡️ الحصانة", value=has_immunity, inline=True)
     await ctx.send(embed=embed)
 
-@bot.command()
-async def تحويل(ctx, member: discord.Member = None, amount: int = None):
-    if not member or not amount or amount <= 0 or member.id == ctx.author.id: return
+@bot.command(name="تحويل")
+async def transfer_money(ctx, member: discord.Member = None, amount: int = None):
+    if not member or not amount or amount <= 0 or member.id == ctx.author.id:
+        await ctx.send("❌ الصيغة الصحيحة: `!تحويل @العضو المبلغ`")
+        return
     wallet, _, _, _, _ = get_user(ctx.author.id)
     if wallet < amount:
         await ctx.send("❌ لا تملك المبلغ الكافي في الكاش!")
@@ -359,9 +361,11 @@ async def تحويل(ctx, member: discord.Member = None, amount: int = None):
     update_wallet(member.id, amount)
     await ctx.send(f"✅ تم تحويل **{amount:,} ريال** إلى {member.mention}.")
 
-@bot.command()
-async def ايداع(ctx, amount: int = None):
-    if not amount or amount <= 0: return
+@bot.command(name="ايداع")
+async def deposit_money(ctx, amount: int = None):
+    if not amount or amount <= 0:
+        await ctx.send("❌ الصيغة الصحيحة: `!ايداع المبلغ`")
+        return
     wallet, _, _, _, _ = get_user(ctx.author.id)
     if wallet < amount:
         await ctx.send("❌ لا تملك هذا المبلغ في الكاش!")
@@ -370,9 +374,11 @@ async def ايداع(ctx, amount: int = None):
     update_bank(ctx.author.id, amount)
     await ctx.send(f"🏦 تم إيداع **{amount:,} ريال** في البنك.")
 
-@bot.command()
-async def سحب(ctx, amount: int = None):
-    if not amount or amount <= 0: return
+@bot.command(name="سحب")
+async def withdraw_money(ctx, amount: int = None):
+    if not amount or amount <= 0:
+        await ctx.send("❌ الصيغة الصحيحة: `!سحب المبلغ`")
+        return
     _, bank, _, _, _ = get_user(ctx.author.id)
     if bank < amount:
         await ctx.send("❌ لا تملك هذا المبلغ في البنك!")
@@ -381,15 +387,15 @@ async def سحب(ctx, amount: int = None):
     update_wallet(ctx.author.id, amount)
     await ctx.send(f"💵 تم سحب **{amount:,} ريال** من البنك.")
 
-@bot.command()
+@bot.command(name="يومية")
 @commands.cooldown(1, 86400, commands.BucketType.user)
-async def يومية(ctx):
+async def daily_reward(ctx):
     update_wallet(ctx.author.id, 500)
     await ctx.send("🎉 حصلت على مكافأتك اليومية بقيمة **500 ريال**!")
 
-@bot.command()
+@bot.command(name="عمل")
 @commands.cooldown(1, 3600, commands.BucketType.user)
-async def عمل(ctx):
+async def work_cmd(ctx):
     earnings = random.randint(50, 200)
     update_wallet(ctx.author.id, earnings)
     await ctx.send(f"💼 عملت بجد وحصلت على **{earnings:,} ريال**!")
@@ -423,26 +429,28 @@ async def my_properties(ctx):
 # ---------------------------------------------------------
 # 5. أوامر العصابات المكتملة
 # ---------------------------------------------------------
-@bot.command(name="انشاء", aliases=["إنشاء"])
-async def create_gang(ctx, sub: str = None, name: str = None):
-    if sub == "عصابة" and name:
-        cost = 100000
-        wallet, _, _, _, gang_id = get_user(ctx.author.id)
-        if gang_id:
-            await ctx.send("❌ أنت مشترك في عصابة بالفعل!")
-            return
-        if wallet < cost:
-            await ctx.send(f"❌ تكلفة إنشاء العصابة **{cost:,} ريال**!")
-            return
-        try:
-            update_wallet(ctx.author.id, -cost)
-            cursor.execute("INSERT INTO gangs (name, leader_id) VALUES (?, ?)", (name, ctx.author.id))
-            g_id = cursor.lastrowid
-            cursor.execute("UPDATE users SET gang_id = ? WHERE user_id = ?", (g_id, ctx.author.id))
-            conn.commit()
-            await ctx.send(f"🔥 تم تأسيس عصابة **[{name}]** بنجاح!")
-        except:
-            await ctx.send("❌ هذا الاسم مستخدم لعصابة أخرى.")
+@bot.command(name="انشاء_عصابة", aliases=["انشاء", "إنشاء"])
+async def create_gang(ctx, *, name: str = None):
+    if not name:
+        await ctx.send("❌ الصيغة الصحيحة: `!انشاء_عصابة [اسم_العصابة]`")
+        return
+    cost = 100000
+    wallet, _, _, _, gang_id = get_user(ctx.author.id)
+    if gang_id:
+        await ctx.send("❌ أنت مشترك في عصابة بالفعل!")
+        return
+    if wallet < cost:
+        await ctx.send(f"❌ تكلفة إنشاء العصابة **{cost:,} ريال**!")
+        return
+    try:
+        update_wallet(ctx.author.id, -cost)
+        cursor.execute("INSERT INTO gangs (name, leader_id) VALUES (?, ?)", (name, ctx.author.id))
+        g_id = cursor.lastrowid
+        cursor.execute("UPDATE users SET gang_id = ? WHERE user_id = ?", (g_id, ctx.author.id))
+        conn.commit()
+        await ctx.send(f"🔥 تم تأسيس عصابة **[{name}]** بنجاح!")
+    except:
+        await ctx.send("❌ هذا الاسم مستخدم لعصابة أخرى.")
 
 @bot.command(name="دعوة")
 async def invite_member(ctx, member: discord.Member = None, contract_amount: int = None):
@@ -473,10 +481,10 @@ async def invite_member(ctx, member: discord.Member = None, contract_amount: int
 
     cursor.execute("INSERT OR REPLACE INTO gang_invites VALUES (?, ?, ?)", (member.id, gang_id, contract_amount))
     conn.commit()
-    await ctx.send(f"📜 تم إرسال عقد انضمام لـ {member.mention} للانضمام لعصابة **[{g_name}]** بمبلغ **{contract_amount:,} ريال**!\nللقبول اكتب: `!قبول الدعوة`")
+    await ctx.send(f"📜 تم إرسال عقد انضمام لـ {member.mention} للانضمام لعصابة **[{g_name}]** بمبلغ **{contract_amount:,} ريال**!\nللقبول اكتب: `!قبول`")
 
-@bot.command(name="قبول", aliases=["قبول الدعوة"])
-async def accept_invite(ctx, sub: str = None):
+@bot.command(name="قبول")
+async def accept_invite(ctx):
     cursor.execute("SELECT gang_id, contract_amount FROM gang_invites WHERE user_id = ?", (ctx.author.id,))
     invite = cursor.fetchone()
     
@@ -502,7 +510,9 @@ async def accept_invite(ctx, sub: str = None):
 
 @bot.command(name="طرد")
 async def kick_gang_member(ctx, member: discord.Member = None):
-    if not member: return
+    if not member:
+        await ctx.send("❌ الصيغة الصحيحة: `!طرد @العضو`")
+        return
     _, _, _, _, gang_id = get_user(ctx.author.id)
     if not gang_id:
         await ctx.send("❌ أنت لست في عصابة!")
@@ -523,7 +533,7 @@ async def kick_gang_member(ctx, member: discord.Member = None):
     conn.commit()
     await ctx.send(f"🚪 تم طرد {member.mention} من العصابة.")
 
-@bot.command(name="مغادرة", aliases=["مغادرة العصابة"])
+@bot.command(name="مغادرة")
 async def leave_gang(ctx):
     _, _, _, _, gang_id = get_user(ctx.author.id)
     if not gang_id:
@@ -550,13 +560,13 @@ async def list_heists(ctx):
             value=f"💵 الأرباح المحتملة: **{info['min_loot']:,} - {info['max_loot']:,} ريال**\n🎯 نسبة النجاح الأساسية: **{int(info['base_chance']*100)}%**",
             inline=False
         )
-    embed.set_footer(text="لبدء سرقة اكتب: !بدء سرقة [رقم_السرقة]")
+    embed.set_footer(text="لبدء سرقة اكتب: !بدء_سرقة [رقم_السرقة]")
     await ctx.send(embed=embed)
 
-@bot.command(name="بدء", aliases=["بدء سرقة"])
+@bot.command(name="بدء_سرقة")
 @commands.cooldown(1, 10800, commands.BucketType.guild)
-async def start_heist(ctx, sub: str = None, heist_id: int = None):
-    if sub == "سرقة" and heist_id in GANG_HEISTS:
+async def start_heist(ctx, heist_id: int = None):
+    if heist_id in GANG_HEISTS:
         _, _, _, _, gang_id = get_user(ctx.author.id)
         if not gang_id:
             await ctx.send("❌ يجب أن تكون في عصابة لتنفذ سرقة!")
@@ -595,6 +605,8 @@ async def start_heist(ctx, sub: str = None, heist_id: int = None):
             await ctx.send(embed=embed)
         else:
             await ctx.send(f"🚓 **فشلت عملية {heist['name']}!** تم إحباط الخطة من قبل الشرطة!")
+    else:
+        await ctx.send("❌ يرجى تحديد رقم سرقة صحيح من القائمة (`!السرقات`).")
 
 @bot.command(name="العصابات", aliases=["عصابات"])
 async def list_gangs(ctx):
@@ -613,48 +625,64 @@ async def list_gangs(ctx):
 # ---------------------------------------------------------
 # 6. الأسهم، الغسيل، والسرقات الفردية
 # ---------------------------------------------------------
-@bot.command(name="شراء", aliases=["شراء سهم"])
-async def buy_stock(ctx, sub: str = None, symbol: str = None, count: int = 1):
-    if sub == "سهم" and symbol:
-        symbol = symbol.upper()
-        cursor.execute("SELECT price, name FROM stocks WHERE symbol = ?", (symbol,))
-        stock = cursor.fetchone()
-        if not stock: return
-        price, name = stock
-        total_cost = price * count
-        wallet, _, _, _, _ = get_user(ctx.author.id)
-        if wallet < total_cost:
-            await ctx.send("❌ لا تملك المال الكافي لشراء هذه الأسهم!")
-            return
-        update_wallet(ctx.author.id, -total_cost)
-        cursor.execute("INSERT INTO user_stocks VALUES (?, ?, ?) ON CONFLICT(user_id, symbol) DO UPDATE SET shares = shares + ?", (ctx.author.id, symbol, count, count))
-        conn.commit()
-        await ctx.send(f"✅ تم شراء **{count}** أسهم في **{name}** بـ **{total_cost:,} ريال**!")
+@bot.command(name="الاسهم", aliases=["أسهم", "الأسهم"])
+async def show_stocks(ctx):
+    cursor.execute("SELECT symbol, name, price FROM stocks")
+    stocks = cursor.fetchall()
+    embed = discord.Embed(title="📈 سوق الأسهم الاستثماري", color=discord.Color.blue())
+    for sym, name, price in stocks:
+        embed.add_field(name=f"{name} [{sym}]", value=f"💵 سعر السهم: **{price:,} ريال**", inline=False)
+    embed.set_footer(text="للشراء استخدم: !شراء_سهم [الرمز] [العدد]")
+    await ctx.send(embed=embed)
 
-@bot.command(name="بيع", aliases=["بيع سهم"])
-async def sell_stock(ctx, sub: str = None, symbol: str = None, count: str = "1"):
-    if sub == "سهم" and symbol:
-        symbol = symbol.upper()
-        cursor.execute("SELECT shares FROM user_stocks WHERE user_id = ? AND symbol = ?", (ctx.author.id, symbol))
-        res = cursor.fetchone()
-        if not res or res[0] <= 0:
-            await ctx.send("❌ لا تملك أسهاً في هذه الشركة!")
-            return
+@bot.command(name="شراء_سهم")
+async def buy_stock(ctx, symbol: str = None, count: int = 1):
+    if not symbol:
+        await ctx.send("❌ الصيغة الصحيحة: `!شراء_سهم [الرمز] [العدد]`")
+        return
+    symbol = symbol.upper()
+    cursor.execute("SELECT price, name FROM stocks WHERE symbol = ?", (symbol,))
+    stock = cursor.fetchone()
+    if not stock:
+        await ctx.send("❌ لم يتم العثور على شركة بهذا الرمز!")
+        return
+    price, name = stock
+    total_cost = price * count
+    wallet, _, _, _, _ = get_user(ctx.author.id)
+    if wallet < total_cost:
+        await ctx.send("❌ لا تملك المال الكافي لشراء هذه الأسهم!")
+        return
+    update_wallet(ctx.author.id, -total_cost)
+    cursor.execute("INSERT INTO user_stocks VALUES (?, ?, ?) ON CONFLICT(user_id, symbol) DO UPDATE SET shares = shares + ?", (ctx.author.id, symbol, count, count))
+    conn.commit()
+    await ctx.send(f"✅ تم شراء **{count}** أسهم في **{name}** بـ **{total_cost:,} ريال**!")
 
-        owned = res[0]
-        sell_count = owned if count.lower() in ["الكل", "all"] else int(count)
+@bot.command(name="بيع_سهم")
+async def sell_stock(ctx, symbol: str = None, count: str = "1"):
+    if not symbol:
+        await ctx.send("❌ الصيغة الصحيحة: `!بيع_سهم [الرمز] [العدد أو الكل]`")
+        return
+    symbol = symbol.upper()
+    cursor.execute("SELECT shares FROM user_stocks WHERE user_id = ? AND symbol = ?", (ctx.author.id, symbol))
+    res = cursor.fetchone()
+    if not res or res[0] <= 0:
+        await ctx.send("❌ لا تملك أسهماً في هذه الشركة!")
+        return
 
-        if owned < sell_count or sell_count <= 0:
-            await ctx.send("❌ لا تملك هذا العدد من الأسهم لبيعه!")
-            return
+    owned = res[0]
+    sell_count = owned if count.lower() in ["الكل", "all"] else int(count)
 
-        cursor.execute("SELECT price, name FROM stocks WHERE symbol = ?", (symbol,))
-        price, name = cursor.fetchone()
-        total_return = price * sell_count
-        cursor.execute("UPDATE user_stocks SET shares = shares - ? WHERE user_id = ? AND symbol = ?", (sell_count, ctx.author.id, symbol))
-        conn.commit()
-        update_wallet(ctx.author.id, total_return)
-        await ctx.send(f"💵 تم بيع **{sell_count}** أسهم بـ **{total_return:,} ريال**!")
+    if owned < sell_count or sell_count <= 0:
+        await ctx.send("❌ لا تملك هذا العدد من الأسهم لبيعه!")
+        return
+
+    cursor.execute("SELECT price, name FROM stocks WHERE symbol = ?", (symbol,))
+    price, name = cursor.fetchone()
+    total_return = price * sell_count
+    cursor.execute("UPDATE user_stocks SET shares = shares - ? WHERE user_id = ? AND symbol = ?", (sell_count, ctx.author.id, symbol))
+    conn.commit()
+    update_wallet(ctx.author.id, total_return)
+    await ctx.send(f"💵 تم بيع **{sell_count}** أسهم بـ **{total_return:,} ريال**!")
 
 @bot.command(name="اسهمي")
 async def my_stocks(ctx):
@@ -670,7 +698,9 @@ async def my_stocks(ctx):
 
 @bot.command(name="غسيل")
 async def wash_money(ctx, amount: int = None):
-    if not amount or amount <= 0: return
+    if not amount or amount <= 0:
+        await ctx.send("❌ الصيغة الصحيحة: `!غسيل المبلغ`")
+        return
     _, _, dirty, _, _ = get_user(ctx.author.id)
     if dirty < amount:
         await ctx.send("❌ لا تملك هذا المبلغ من الأموال السوداء!")
@@ -684,10 +714,12 @@ async def wash_money(ctx, amount: int = None):
     update_wallet(ctx.author.id, clean_amount)
     await ctx.send(f"🧼 **تمت العملية!** تحول المبلغ إلى **{clean_amount:,} ريال** كاش.")
 
-@bot.command()
+@bot.command(name="سرقة")
 @commands.cooldown(1, 7200, commands.BucketType.user)
-async def سرقة(ctx, target: discord.Member = None):
-    if not target or target.id == ctx.author.id: return
+async def rob_user(ctx, target: discord.Member = None):
+    if not target or target.id == ctx.author.id:
+        await ctx.send("❌ الصيغة الصحيحة: `!سرقة @العضو`")
+        return
     s_wallet, _, _, _, _ = get_user(ctx.author.id)
     t_wallet, _, _, t_immunity, _ = get_user(target.id)
     if t_immunity > time.time():
@@ -708,8 +740,8 @@ async def سرقة(ctx, target: discord.Member = None):
         update_wallet(target.id, penalty)
         await ctx.send(f"🚨 تم القبض عليك وغرمت **{penalty:,} ريال** لصالح {target.mention}!")
 
-@bot.command()
-async def حصانة(ctx):
+@bot.command(name="حصانة")
+async def buy_immunity(ctx):
     price = get_setting('immunity_price', 5000)
     wallet, _, _, immunity, _ = get_user(ctx.author.id)
     if immunity > time.time():
@@ -724,8 +756,8 @@ async def حصانة(ctx):
     conn.commit()
     await ctx.send("🛡️ تم تفعيل الحصانة لمدة 24 ساعة!")
 
-@bot.command()
-async def مزايدة(ctx, amount: int = None):
+@bot.command(name="مزايدة")
+async def bid_auction(ctx, amount: int = None):
     if not current_auction["active"]:
         await ctx.send("❌ لا يوجد مزاد قائم حالياً!")
         return
@@ -747,20 +779,24 @@ async def show_lottery(ctx):
     await ctx.send(f"🎟️ إجمالي التذاكر المباعة: **{tickets}** | الجائزة الكبرى الحالية: **{tickets * 1000:,} ريال**!")
 
 # ---------------------------------------------------------
-# 7. الأوامر الإدارية الكاملة (Admin & Owner Commands)
+# 7. الأوامر الإدارية الكاملة (Admin Commands)
 # ---------------------------------------------------------
 
 @bot.command(name="اعطاء", aliases=["إعطاء"])
 @commands.has_permissions(administrator=True)
 async def give_money(ctx, member: discord.Member = None, amount: int = None):
-    if not member or not amount: return
+    if not member or not amount:
+        await ctx.send("❌ الصيغة الصحيحة: `!اعطاء @العضو المبلغ`")
+        return
     update_wallet(member.id, amount)
     await ctx.send(f"✅ تم إضافة **{amount:,} ريال** إلى حساب {member.mention}.")
 
 @bot.command(name="خصم")
 @commands.has_permissions(administrator=True)
 async def remove_money(ctx, member: discord.Member = None, amount: int = None):
-    if not member or not amount: return
+    if not member or not amount:
+        await ctx.send("❌ الصيغة الصحيحة: `!خصم @العضو المبلغ`")
+        return
     update_wallet(member.id, -amount)
     await ctx.send(f"✅ تم خصم **{amount:,} ريال** من حساب {member.mention}.")
 
@@ -775,24 +811,63 @@ async def reset_user(ctx, target: str = None, member: discord.Member = None):
         cursor.execute("UPDATE users SET wallet = 100, bank = 0, dirty_money = 0 WHERE user_id = ?", (member.id,))
         conn.commit()
         await ctx.send(f"✅ تم تصفير حساب {member.mention} بنجاح.")
+    else:
+        await ctx.send("❌ الصيغة الصحيحة: `!تصفير الكل` أو `!تصفير شخص @العضو`")
 
-@bot.command(name="تحديد")
+@bot.command(name="تحديد_الحصانة")
 @commands.has_permissions(administrator=True)
-async def set_immunity_price(ctx, sub: str = None, price: int = None):
-    if sub == "الحصانة" and price:
-        set_setting('immunity_price', price)
-        await ctx.send(f"⚙️ تم تغيير سعر شراء الحصانة إلى **{price:,} ريال**.")
+async def set_immunity_price(ctx, price: int = None):
+    if not price or price <= 0:
+        await ctx.send("❌ الصيغة الصحيحة: `!تحديد_الحصانة [السعر]`")
+        return
+    set_setting('immunity_price', price)
+    await ctx.send(f"⚙️ تم تغيير سعر شراء الحصانة إلى **{price:,} ريال**.")
 
-@bot.command(name="اضافة")
+@bot.command(name="اضافة_عقار")
 @commands.has_permissions(administrator=True)
-async def add_property(ctx, sub: str = None, name: str = None, price: int = None, income: int = None):
-    if sub == "عقار" and name and price and income:
-        cursor.execute("INSERT INTO properties (name, price, daily_income) VALUES (?, ?, ?)", (name, price, income))
-        conn.commit()
-        await ctx.send(f"🏢 تم إضافة عقار جديد: **{name}** بسعر **{price:,}** ودخل **{income:,}**.")
+async def add_property(ctx, name: str = None, price: int = None, income: int = None):
+    if not name or not price or not income:
+        await ctx.send("❌ الصيغة الصحيحة: `!اضافة_عقار [الاسم] [السعر] [الدخل]`")
+        return
+    cursor.execute("INSERT INTO properties (name, price, daily_income) VALUES (?, ?, ?)", (name, price, income))
+    conn.commit()
+    await ctx.send(f"🏢 تم إضافة عقار جديد: **{name}** بسعر **{price:,}** ودخل **{income:,}**.")
 
-@bot.command(name="تحديث الاسهم")
-@commands.is_owner()
+@bot.command(name="حذف_عقار")
+@commands.has_permissions(administrator=True)
+async def delete_property_cmd(ctx, prop_id: int = None):
+    if not prop_id:
+        await ctx.send("❌ الصيغة الصحيحة: `!حذف_عقار [رقم_العقار]`")
+        return
+    cursor.execute("SELECT name FROM properties WHERE property_id = ?", (prop_id,))
+    prop = cursor.fetchone()
+    if not prop:
+        await ctx.send("❌ لم يتم العثور على عقار بهذا الرقم!")
+        return
+    cursor.execute("DELETE FROM properties WHERE property_id = ?", (prop_id,))
+    conn.commit()
+    await ctx.send(f"🗑️ تم حذف العقار **{prop[0]}** (رقم #{prop_id}) نهائياً.")
+
+@bot.command(name="سحب_عقار")
+@commands.has_permissions(administrator=True)
+async def revoke_property_cmd(ctx, prop_id: int = None):
+    if not prop_id:
+        await ctx.send("❌ الصيغة الصحيحة: `!سحب_عقار [رقم_العقار]`")
+        return
+    cursor.execute("SELECT name, owner_id FROM properties WHERE property_id = ?", (prop_id,))
+    prop = cursor.fetchone()
+    if not prop:
+        await ctx.send("❌ لم يتم العثور على عقار بهذا الرقم!")
+        return
+    if prop[1] is None:
+        await ctx.send("❌ هذا العقار غير مملوك لأحد بالفعل!")
+        return
+    cursor.execute("UPDATE properties SET owner_id = NULL WHERE property_id = ?", (prop_id,))
+    conn.commit()
+    await ctx.send(f"🏢 تم سحب ملكية العقار **{prop[0]}** (رقم #{prop_id}) وإعادة عرضه للبيع.")
+
+@bot.command(name="تحديث_الاسهم", aliases=["تحديث_أسهم"])
+@commands.has_permissions(administrator=True)
 async def update_stocks_price(ctx):
     cursor.execute("SELECT symbol, price FROM stocks")
     stocks = cursor.fetchall()
@@ -801,22 +876,26 @@ async def update_stocks_price(ctx):
         new_price = max(10, int(price * (1 + change)))
         cursor.execute("UPDATE stocks SET price = ? WHERE symbol = ?", (new_price, sym))
     conn.commit()
-    await ctx.send("📈📉 تم تحديث أسعار الأسهم!")
+    await ctx.send("📈📉 تم تحديث أسعار الأسهم بنجاح!")
 
-@bot.command(name="بدء مزاد")
-@commands.is_owner()
+@bot.command(name="بدء_مزاد")
+@commands.has_permissions(administrator=True)
 async def start_auction_cmd(ctx, item: str = None, start_price: int = 1000):
-    if not item: return
+    if not item:
+        await ctx.send("❌ الصيغة الصحيحة: `!بدء_مزاد [السلعة] [السعر_الابتدائي]`")
+        return
     current_auction["item"] = item
     current_auction["highest_bid"] = start_price
     current_auction["highest_bidder"] = None
     current_auction["active"] = True
     await ctx.send(f"🔨 **بدأ المزاد!** السلعة: **{item}** | بدء المزاد بـ **{start_price:,} ريال**!")
 
-@bot.command(name="انهاء المزاد")
-@commands.is_owner()
+@bot.command(name="انهاء_المزاد")
+@commands.has_permissions(administrator=True)
 async def end_auction_cmd(ctx):
-    if not current_auction["active"]: return
+    if not current_auction["active"]:
+        await ctx.send("❌ لا يوجد مزاد قائم حالياً لإنهائه!")
+        return
     current_auction["active"] = False
     winner = current_auction["highest_bidder"]
     bid = current_auction["highest_bid"]
@@ -827,8 +906,8 @@ async def end_auction_cmd(ctx):
     else:
         await ctx.send("🔨 انتهى المزاد دون وجود أي مزايدات.")
 
-@bot.command(name="سحب اليانصيب")
-@commands.is_owner()
+@bot.command(name="سحب_اليانصيب")
+@commands.has_permissions(administrator=True)
 async def draw_lottery_cmd(ctx):
     cursor.execute("SELECT user_id FROM lottery")
     tickets = cursor.fetchall()
