@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS properties (
 """)
 
 cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_cars (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    car_name TEXT
+)
+""")
+
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS gangs (
     gang_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
@@ -88,7 +96,7 @@ CREATE TABLE IF NOT EXISTS settings (
 )
 """)
 
-# الإعدادات الافتراضية
+# البيانات الإفتراضية
 cursor.execute("INSERT OR IGNORE INTO settings VALUES ('immunity_price', 5000)")
 cursor.execute("INSERT OR IGNORE INTO stocks VALUES ('TECH', 'شركة التكنولوجيا', 500)")
 cursor.execute("INSERT OR IGNORE INTO stocks VALUES ('REAL', 'شركة العقارات', 1200)")
@@ -101,6 +109,14 @@ if cursor.fetchone()[0] == 0:
     cursor.execute("INSERT INTO properties (name, price, daily_income) VALUES ('مجمع سكني', 500000, 30000)")
 
 conn.commit()
+
+# قائمة السيارات المتاحة
+CARS = {
+    "سسكي": {"price": 15000, "speed": "عادية"},
+    "كامري": {"price": 45000, "speed": "متوسطة"},
+    "جيب": {"price": 120000, "speed": "عالية"},
+    "روز": {"price": 500000, "speed": "خارقة"}
+}
 
 # السرقات المتاحة للعصابات
 GANG_HEISTS = {
@@ -198,6 +214,7 @@ class BuyPropertySelect(Select):
 
         await interaction.response.send_message(f"🎉 **مبروك!** اشتريت **{name}** بمبلغ **{price:,} ريال**!", ephemeral=False)
 
+
 class MainControlView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -226,7 +243,19 @@ class MainControlView(View):
         view.add_item(BuyPropertySelect())
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @discord.ui.button(label="💰 جمع أرباح العقارات", style=discord.ButtonStyle.success, custom_id="btn_claim_income", row=0)
+    @discord.ui.button(label="🏎️ معرض السيارات", style=discord.ButtonStyle.primary, custom_id="btn_cars", row=0)
+    async def cars_btn(self, interaction: discord.Interaction, button: Button):
+        embed = discord.Embed(title="🏎️ معرض السيارات والدبابات المتاحة", color=discord.Color.gold())
+        for car_name, info in CARS.items():
+            embed.add_field(
+                name=f"🚗 {car_name}", 
+                value=f"💵 السعر: **{info['price']:,} ريال**\n⚡ السرعة: {info['speed']}", 
+                inline=False
+            )
+        embed.set_footer(text="للشراء استخدم الأمر: !شراء_سيارة [اسم_السيارة]")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="💰 جمع أرباح العقارات", style=discord.ButtonStyle.success, custom_id="btn_claim_income", row=1)
     async def claim_income_btn(self, interaction: discord.Interaction, button: Button):
         cursor.execute("SELECT daily_income FROM properties WHERE owner_id = ?", (interaction.user.id,))
         props = cursor.fetchall()
@@ -255,7 +284,7 @@ class MainControlView(View):
         embed = discord.Embed(title="📈 سوق الأسهم الاستثماري", color=discord.Color.blue())
         for sym, name, price in stocks:
             embed.add_field(name=f"{name} [{sym}]", value=f"💵 سعر السهم: **{price:,} ريال**", inline=False)
-        embed.set_footer(text="للشراء استخدم: !شراء سهم [الرمز] [العدد]")
+        embed.set_footer(text="للشراء استخدم: !شراء_سهم [الرمز] [العدد]")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="🏴 عصابتي", style=discord.ButtonStyle.danger, custom_id="btn_my_gang", row=1)
@@ -314,6 +343,11 @@ async def open_panel(ctx):
     embed.add_field(
         name="🏢 العقارات والأعمال",
         value="`!العقارات` | `!شراء عقار [الرقم]` | `!عقاراتي` | `!جمع ارباح`",
+        inline=False
+    )
+    embed.add_field(
+        name="🏎️ السيارات والمركبات",
+        value="`!معرض_السيارات` | `!شراء_سيارة [الاسم]` | `!سياراتي`",
         inline=False
     )
     embed.add_field(
@@ -427,9 +461,57 @@ async def my_properties(ctx):
     await ctx.send(embed=embed)
 
 # ---------------------------------------------------------
-# 5. أوامر العصابات المكتملة
+# 5. أوامر المعرض والسيارات
 # ---------------------------------------------------------
-@bot.command(name="انشاء_عصابة", aliases=["انشاء", "إنشاء"])
+
+@bot.command(name="معرض_السيارات", aliases=["السيارات", "معرض", "معرض السيارات"])
+async def show_cars(ctx):
+    embed = discord.Embed(title="🏎️ معرض السيارات والدبابات", color=discord.Color.gold())
+    for car_name, info in CARS.items():
+        embed.add_field(
+            name=f"🚗 {car_name}", 
+            value=f"💵 السعر: **{info['price']:,} ريال**\n⚡ السرعة: {info['speed']}", 
+            inline=False
+        )
+    embed.set_footer(text="الشراء عبر الأمر: !شراء_سيارة [اسم_السيارة]")
+    await ctx.send(embed=embed)
+
+@bot.command(name="شراء_سيارة", aliases=["شراء سيارة", "شراء_سياره", "شراء سياره"])
+async def buy_car(ctx, car_name: str = None):
+    if not car_name or car_name not in CARS:
+        await ctx.send("❌ يرجى كتابة اسم المركبة بشكل صحيح من المعرض!\nمثال: `!شراء سيارة كامري` أو `!شراء سيارة دباب`")
+        return
+    
+    price = CARS[car_name]["price"]
+    wallet, _, _, _, _ = get_user(ctx.author.id)
+    
+    if wallet < price:
+        await ctx.send(f"❌ رصيدك غير كافٍ! تحتاج إلى **{price:,} ريال** كاش لشراء {car_name}.")
+        return
+    
+    update_wallet(ctx.author.id, -price)
+    cursor.execute("INSERT INTO user_cars (user_id, car_name) VALUES (?, ?)", (ctx.author.id, car_name))
+    conn.commit()
+    
+    await ctx.send(f"🎉 ألف مبروك! قمت بشراء **{car_name}** بسعر **{price:,} ريال**!")
+
+@bot.command(name="سياراتي", aliases=["مركباتي", "كراج"])
+async def my_cars(ctx):
+    cursor.execute("SELECT car_name FROM user_cars WHERE user_id = ?", (ctx.author.id,))
+    cars = cursor.fetchall()
+    
+    if not cars:
+        await ctx.send("🚗 أنت لا تمتلك أي سيارات أو دبابات حالياً.")
+        return
+        
+    car_list = "\n".join([f"• 🚗 {car[0]}" for car in cars])
+    embed = discord.Embed(title=f"🏎️ كراج {ctx.author.display_name}", description=car_list, color=discord.Color.blue())
+    await ctx.send(embed=embed)
+
+# ---------------------------------------------------------
+# 6. أوامر العصابات
+# ---------------------------------------------------------
+@bot.command(name="انشاء_عصابة", aliases=["انشاء", "إنشاء", "انشاء عصابة"])
 async def create_gang(ctx, *, name: str = None):
     if not name:
         await ctx.send("❌ الصيغة الصحيحة: `!انشاء_عصابة [اسم_العصابة]`")
@@ -563,7 +645,7 @@ async def list_heists(ctx):
     embed.set_footer(text="لبدء سرقة اكتب: !بدء_سرقة [رقم_السرقة]")
     await ctx.send(embed=embed)
 
-@bot.command(name="بدء_سرقة")
+@bot.command(name="بدء_سرقة", aliases=["بدء سرقة", "بداية_سرقة"])
 @commands.cooldown(1, 10800, commands.BucketType.guild)
 async def start_heist(ctx, heist_id: int = None):
     if heist_id in GANG_HEISTS:
@@ -623,7 +705,7 @@ async def list_gangs(ctx):
     await ctx.send(embed=embed)
 
 # ---------------------------------------------------------
-# 6. الأسهم، الغسيل، والسرقات الفردية
+# 7. الأسهم، الغسيل، والسرقات الفردية
 # ---------------------------------------------------------
 @bot.command(name="الاسهم", aliases=["أسهم", "الأسهم"])
 async def show_stocks(ctx):
@@ -635,7 +717,7 @@ async def show_stocks(ctx):
     embed.set_footer(text="للشراء استخدم: !شراء_سهم [الرمز] [العدد]")
     await ctx.send(embed=embed)
 
-@bot.command(name="شراء_سهم")
+@bot.command(name="شراء_سهم", aliases=["شراء سهم"])
 async def buy_stock(ctx, symbol: str = None, count: int = 1):
     if not symbol:
         await ctx.send("❌ الصيغة الصحيحة: `!شراء_سهم [الرمز] [العدد]`")
@@ -657,7 +739,7 @@ async def buy_stock(ctx, symbol: str = None, count: int = 1):
     conn.commit()
     await ctx.send(f"✅ تم شراء **{count}** أسهم في **{name}** بـ **{total_cost:,} ريال**!")
 
-@bot.command(name="بيع_سهم")
+@bot.command(name="بيع_سهم", aliases=["بيع سهم"])
 async def sell_stock(ctx, symbol: str = None, count: str = "1"):
     if not symbol:
         await ctx.send("❌ الصيغة الصحيحة: `!بيع_سهم [الرمز] [العدد أو الكل]`")
@@ -779,7 +861,7 @@ async def show_lottery(ctx):
     await ctx.send(f"🎟️ إجمالي التذاكر المباعة: **{tickets}** | الجائزة الكبرى الحالية: **{tickets * 1000:,} ريال**!")
 
 # ---------------------------------------------------------
-# 7. الأوامر الإدارية الكاملة (Admin Commands)
+# 8. الأوامر الإدارية الكاملة (Admin Commands)
 # ---------------------------------------------------------
 
 @bot.command(name="اعطاء", aliases=["إعطاء"])
@@ -814,7 +896,7 @@ async def reset_user(ctx, target: str = None, member: discord.Member = None):
     else:
         await ctx.send("❌ الصيغة الصحيحة: `!تصفير الكل` أو `!تصفير شخص @العضو`")
 
-@bot.command(name="تحديد_الحصانة")
+@bot.command(name="تحديد_الحصانة", aliases=["تحديد الحصانة"])
 @commands.has_permissions(administrator=True)
 async def set_immunity_price(ctx, price: int = None):
     if not price or price <= 0:
@@ -823,7 +905,7 @@ async def set_immunity_price(ctx, price: int = None):
     set_setting('immunity_price', price)
     await ctx.send(f"⚙️ تم تغيير سعر شراء الحصانة إلى **{price:,} ريال**.")
 
-@bot.command(name="اضافة_عقار")
+@bot.command(name="اضافة_عقار", aliases=["اضافة عقار", "إضافة_عقار"])
 @commands.has_permissions(administrator=True)
 async def add_property(ctx, name: str = None, price: int = None, income: int = None):
     if not name or not price or not income:
@@ -833,7 +915,7 @@ async def add_property(ctx, name: str = None, price: int = None, income: int = N
     conn.commit()
     await ctx.send(f"🏢 تم إضافة عقار جديد: **{name}** بسعر **{price:,}** ودخل **{income:,}**.")
 
-@bot.command(name="حذف_عقار")
+@bot.command(name="حذف_عقار", aliases=["حذف عقار"])
 @commands.has_permissions(administrator=True)
 async def delete_property_cmd(ctx, prop_id: int = None):
     if not prop_id:
@@ -848,7 +930,7 @@ async def delete_property_cmd(ctx, prop_id: int = None):
     conn.commit()
     await ctx.send(f"🗑️ تم حذف العقار **{prop[0]}** (رقم #{prop_id}) نهائياً.")
 
-@bot.command(name="سحب_عقار")
+@bot.command(name="سحب_عقار", aliases=["سحب عقار"])
 @commands.has_permissions(administrator=True)
 async def revoke_property_cmd(ctx, prop_id: int = None):
     if not prop_id:
@@ -866,7 +948,7 @@ async def revoke_property_cmd(ctx, prop_id: int = None):
     conn.commit()
     await ctx.send(f"🏢 تم سحب ملكية العقار **{prop[0]}** (رقم #{prop_id}) وإعادة عرضه للبيع.")
 
-@bot.command(name="تحديث_الاسهم", aliases=["تحديث_أسهم"])
+@bot.command(name="تحديث_الاسهم", aliases=["تحديث_أسهم", "تحديث الأسهم", "تحديث الاسهم"])
 @commands.has_permissions(administrator=True)
 async def update_stocks_price(ctx):
     cursor.execute("SELECT symbol, price FROM stocks")
@@ -878,7 +960,7 @@ async def update_stocks_price(ctx):
     conn.commit()
     await ctx.send("📈📉 تم تحديث أسعار الأسهم بنجاح!")
 
-@bot.command(name="بدء_مزاد")
+@bot.command(name="بدء_مزاد", aliases=["بدء مزاد", "بداية_مزاد"])
 @commands.has_permissions(administrator=True)
 async def start_auction_cmd(ctx, item: str = None, start_price: int = 1000):
     if not item:
@@ -890,7 +972,7 @@ async def start_auction_cmd(ctx, item: str = None, start_price: int = 1000):
     current_auction["active"] = True
     await ctx.send(f"🔨 **بدأ المزاد!** السلعة: **{item}** | بدء المزاد بـ **{start_price:,} ريال**!")
 
-@bot.command(name="انهاء_المزاد")
+@bot.command(name="انهاء_المزاد", aliases=["انهاء المزاد", "إنهاء_المزاد"])
 @commands.has_permissions(administrator=True)
 async def end_auction_cmd(ctx):
     if not current_auction["active"]:
@@ -906,7 +988,7 @@ async def end_auction_cmd(ctx):
     else:
         await ctx.send("🔨 انتهى المزاد دون وجود أي مزايدات.")
 
-@bot.command(name="سحب_اليانصيب")
+@bot.command(name="سحب_اليانصيب", aliases=["سحب اليانصيب"])
 @commands.has_permissions(administrator=True)
 async def draw_lottery_cmd(ctx):
     cursor.execute("SELECT user_id FROM lottery")
@@ -922,62 +1004,6 @@ async def draw_lottery_cmd(ctx):
     winner = bot.get_user(winner_id)
     w_name = winner.mention if winner else f"مستخدم ({winner_id})"
     await ctx.send(f"🎉 الفائز بالجائزة الكبرى لليانصيب هو {w_name} بـ **{total_jackpot:,} ريال**!")
-
-# =========================================================
-# 🏎️ نظام المعرض والسيارات (متوافق مع قاعدة البيانات)
-# =========================================================
-
-# 1. إنشاء جدول السيارات
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS user_cars (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        car_name TEXT
-    )
-''')
-conn.commit()
-
-# 2. قائمة السيارات المتاحة
-CARS = {
-    "X100": {"price": 15000, "speed": "عادية"},
-    "كامري": {"price": 45000, "speed": "متوسطة"},
-    "لكزس": {"price": 120000, "speed": "عالية"},
-    "روز": {"price": 500000, "speed": "خارقة"}
-}
-
-# 3. أمر عرض معرض السيارات
-@bot.command(name="معرض_السيارات", aliases=["السيارات", "معرض", "معرض السيارات"])
-async def show_cars(ctx):
-    embed = discord.Embed(title="🏎️ معرض السيارات والدبابات", color=discord.Color.gold())
-    for car_name, info in CARS.items():
-        embed.add_field(
-            name=f"🚗 {car_name}", 
-            value=f"💵 السعر: **{info['price']:,} ريال**\n⚡ السرعة: {info['speed']}", 
-            inline=False
-        )
-    embed.set_footer(text="الشراء عبر الأمر: !شراء_سيارة [اسم_السيارة]")
-    await ctx.send(embed=embed)
-
-# 4. أمر شراء سيارة
-@bot.command(name="شراء_سيارة", aliases=["شراء سيارة", "شراء_سياره", "شراء سياره"])
-async def buy_car(ctx, car_name: str = None):
-    if not car_name or car_name not in CARS:
-        await ctx.send("❌ يرجى كتابة اسم المركبة بشكل صحيح من المعرض!\nمثال: `!شراء سيارة كامري` أو `!شراء سيارة دباب`")
-        return
-    
-    price = CARS[car_name]["price"]
-    wallet, _, _, _, _ = get_user(ctx.author.id)
-    
-    if wallet < price:
-        await ctx.send(f"❌ رصيدك غير كافٍ! تحتاج إلى **{price:,} ريال** كاش لشراء {car_name}.")
-        return
-    
-    # خصم المبلغ وإضافة السيارة
-    update_wallet(ctx.author.id, -price)
-    cursor.execute("INSERT INTO user_cars (user_id, car_name) VALUES (?, ?)", (ctx.author.id, car_name))
-    conn.commit()
-    
-    await ctx.send(f"🎉 ألف مبروك! قمت بشراء **{car_name}** بسعر **{price:,} ريال**!")
 
 # تشغيل البوت
 TOKEN = os.environ.get("BOT_TOKEN") or os.environ.get("DISCORD_TOKEN")
