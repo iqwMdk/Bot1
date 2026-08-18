@@ -924,10 +924,10 @@ async def draw_lottery_cmd(ctx):
     await ctx.send(f"🎉 الفائز بالجائزة الكبرى لليانصيب هو {w_name} بـ **{total_jackpot:,} ريال**!")
 
 # =========================================================
-# 🏎️ نظام السيارات والتأكد من جدول قاعدة البيانات
+# 🏎️ نظام المعرض والسيارات (متوافق مع قاعدة البيانات)
 # =========================================================
 
-# إنشاء جدول السيارات في قاعدة البيانات تلقائياً إن لم يكن موجوداً
+# 1. إنشاء جدول السيارات
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_cars (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -937,7 +937,7 @@ cursor.execute('''
 ''')
 conn.commit()
 
-# قائمة السيارات المتاحة
+# 2. قائمة السيارات المتاحة
 CARS = {
     "X100": {"price": 15000, "speed": "عادية"},
     "كامري": {"price": 45000, "speed": "متوسطة"},
@@ -945,7 +945,7 @@ CARS = {
     "روز": {"price": 500000, "speed": "خارقة"}
 }
 
-# أمر عرض معرض السيارات
+# 3. أمر عرض معرض السيارات
 @bot.command(name="معرض_السيارات", aliases=["السيارات", "معرض", "معرض السيارات"])
 async def show_cars(ctx):
     embed = discord.Embed(title="🏎️ معرض السيارات والدبابات", color=discord.Color.gold())
@@ -958,7 +958,7 @@ async def show_cars(ctx):
     embed.set_footer(text="الشراء عبر الأمر: !شراء_سيارة [اسم_السيارة]")
     await ctx.send(embed=embed)
 
-# أمر شراء سيارة
+# 4. أمر شراء سيارة
 @bot.command(name="شراء_سيارة", aliases=["شراء سيارة", "شراء_سياره", "شراء سياره"])
 async def buy_car(ctx, car_name: str = None):
     if not car_name or car_name not in CARS:
@@ -966,24 +966,18 @@ async def buy_car(ctx, car_name: str = None):
         return
     
     price = CARS[car_name]["price"]
-    user_id = ctx.author.id
+    wallet, _, _, _, _ = get_user(ctx.author.id)
     
-    # جلب رصيد المستخدم
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-    balance = result[0] if result else 0
-    
-    if balance < price:
-        await ctx.send(f"❌ رصيدك غير كافٍ! تحتاج إلى **{price:,} ريال** لشراء {car_name}.")
+    if wallet < price:
+        await ctx.send(f"❌ رصيدك غير كافٍ! تحتاج إلى **{price:,} ريال** كاش لشراء {car_name}.")
         return
     
-    # خصم المبلغ وحفظ السيارة
-    new_balance = balance - price
-    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
-    cursor.execute("INSERT INTO user_cars (user_id, car_name) VALUES (?, ?)", (user_id, car_name))
+    # خصم المبلغ وإضافة السيارة
+    update_wallet(ctx.author.id, -price)
+    cursor.execute("INSERT INTO user_cars (user_id, car_name) VALUES (?, ?)", (ctx.author.id, car_name))
     conn.commit()
     
-    await ctx.send(f"🎉 ألف مبروك! قمت بشراء **{car_name}** بسعر **{price:,} ريال**! المتبقي في رصيدك: **{new_balance:,} ريال**.")
+    await ctx.send(f"🎉 ألف مبروك! قمت بشراء **{car_name}** بسعر **{price:,} ريال**!")
 
 # تشغيل البوت
 TOKEN = os.environ.get("BOT_TOKEN") or os.environ.get("DISCORD_TOKEN")
