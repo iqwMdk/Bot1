@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import discord
 from discord.ext import commands
@@ -93,7 +94,4 @@ async def pay(ctx, member: discord.Member, amount: int):
 
 
 # تشغيل البوت (ضع التوكن الخاص بك هنا)
-import os
-
 bot.run(os.environ.get("BOT_TOKEN"))
-
