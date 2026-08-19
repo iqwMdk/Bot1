@@ -497,6 +497,63 @@ async def admin_unjail(ctx, member: discord.Member = None):
     data["in_jail"] = False
     data["jail_release_time"] = None
     await ctx.send(f"⚖️ تم إصدار عفو إداري والإفراج عن {member.mention} فوراً.")
+# ==========================================
+# أمر اليومية (!يومية)
+# ==========================================
+@bot.command(name="يومية", aliases=["daily"])
+@commands.cooldown(1, 86400, commands.BucketType.user) # مرة كل 24 ساعة (86400 ثانية)
+async def daily_cmd(ctx):
+    data = get_user_data(ctx.author.id)
+    
+    # مكافأة اليومية (مبلغ عشوائي بين 1000 و 2500)
+    reward = random.randint(1000, 2500)
+    data["wallet"] += reward
+    
+    await ctx.send(f"🎁 أهلاً {ctx.author.mention}! لقد حصلت على مكافأتك اليومية بقيمة **${reward:,}**!")
+
+# ==========================================
+# أمر المساعدة (!مساعدة)
+# ==========================================
+@bot.command(name="مساعدة", aliases=["help"])
+async def help_cmd(ctx):
+    embed = discord.Embed(
+        title="📜 قائمة أوامر البوت الاقتصادية",
+        description="إليك جميع الأوامر المتاحة لاستخدامها في السيرفر:",
+        color=discord.Color.gold()
+    )
+    
+    embed.add_field(
+        name="💼 الأوامر العامة والعمل",
+        value="• `!عمل` - للعمل كسب المال والترقية في المهن\n"
+              "• `!مهنتي` - لعرض مستواك الوظيفي والراتب\n"
+              "• `!يومية` - لاستلام المكافأة اليومية كل 24 ساعة\n"
+              "• `!بروفايل` - لعرض بطاقتك الشخصية ورصيدك",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🛒 المتجر والتأمين",
+        value="• `!معرض` - لفتح المعرض التفاعلي والشراء بالأزرار\n"
+              "• `!تأمين` - لشراء تأمين ضد السرقات والحوادث",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="⚖️ الجرائم والقضاء",
+        value="• `!سرقة @عضو` - لمحاولة سرقة عضو آخر\n"
+              "• `!كفالة` - لدفع كفالة الخروج من السجن",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🏦 المعاملات المالية",
+        value="• `!تحويل @عضو المبلغ` - لتحويل كاش لعضو آخر\n"
+              "• `!ايداع المبلغ` - لإيداع الكاش في البنك\n"
+              "• `!سحب المبلغ` - لسحب المال من البنك",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
 
 # ==========================================
 # 11. تشغيل البوت
