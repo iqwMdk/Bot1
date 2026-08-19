@@ -377,8 +377,11 @@ async def cmd_create_gang(ctx, *, name: str = None):
     await ctx.send(f"🏴‍☠️ تم إنشاء **{name}** بنجاح!")
 
 # ==========================================
-# 6. الأوامر الإدارية (Admin Commands)
+## ==========================================
+# 6. الأوامر الإدارية (للإدارة والأونر)
 # ==========================================
+
+# --- إعطاء وخصم الأموال ---
 @bot.command(name="اعطاء")
 @commands.has_permissions(administrator=True)
 async def admin_give_money(ctx, member: discord.Member = None, amount: int = None):
@@ -393,6 +396,56 @@ async def admin_take_money(ctx, member: discord.Member = None, amount: int = Non
     get_user_data(member.id)["wallet"] = max(0, get_user_data(member.id)["wallet"] - amount)
     await ctx.send(f"⚙️ تم خصم **${amount:,}** من {member.mention}")
 
+# --- إدارة العقارات (إضافة وحذف) ---
+@bot.command(name="اضافة_عقار")
+@commands.has_permissions(administrator=True)
+async def admin_add_estate(ctx, name: str = None, price: int = None, income: int = None):
+    if not name or not price or not income:
+        return await ctx.send("❌ الاستخدام: `!اضافة_عقار [اسم_العقار] [السعر] [الدخل_الدوري]`\nمثال: `!اضافة_عقار فندق 1000000 50000`")
+    
+    # توليد رقم تعريف تلقائي للعقار الجديد
+    new_id = str(len(real_estate_market) + 1)
+    real_estate_market[new_id] = {"name": name, "price": price, "income": income}
+    await ctx.send(f"✅ تم إضافة العقار الجديد برقم **[{new_id}]**: **{name}** | السعر: **${price:,}** | الدخل: **${income:,}**")
+
+@bot.command(name="حذف_عقار")
+@commands.has_permissions(administrator=True)
+async def admin_remove_estate(ctx, estate_id: str = None):
+    if not estate_id or estate_id not in real_estate_market:
+        return await ctx.send("❌ اكتب رقم العقار الصحيح لحذفه! مثال: `!حذف_عقار 1`")
+    
+    removed = real_estate_market.pop(estate_id)
+    await ctx.send(f"🗑️ تم حذف عقار **{removed['name']}** من السوق بنجاح.")
+
+# --- إدارة المزاد ---
+@bot.command(name="بدء_مزاد")
+@commands.has_permissions(administrator=True)
+async def admin_start_auction(ctx, item: str = None, price: int = None):
+    global current_auction
+    if not item or not price:
+        return await ctx.send("❌ الاستخدام: `!بدء_مزاد [السلعة] [السعر_الافتتاحي]`\nمثال: `!بدء_مزاد سيارة_نادرة 50000`")
+    
+    current_auction = {"active": True, "item": item, "price": price, "highest_bidder": None}
+    await ctx.send(f"📢 **بدأ المزاد العلني على: {item}** بسعر افتتاحي **${price:,}**!\n💡 للمزايدة اكتب: `!مزايدة [المبلغ]`")
+
+@bot.command(name="انهاء_المزاد")
+@commands.has_permissions(administrator=True)
+async def admin_end_auction(ctx):
+    global current_auction
+    if not current_auction["active"]:
+        return await ctx.send("❌ لا يوجد مزاد قائم حالياً!")
+    
+    if current_auction["highest_bidder"]:
+        winner_id = current_auction["highest_bidder"]
+        price = current_auction["price"]
+        get_user_data(winner_id)["wallet"] -= price
+        await ctx.send(f"🎉 **انتهى المزاد!** فاز بالمزاد <@{winner_id}> بسعر **${price:,}** لسلعة ({current_auction['item']})!")
+    else:
+        await ctx.send("🔨 انتهى المزاد دون تقديم أي مزايدات.")
+    
+    current_auction["active"] = False
+
+# --- سحب اليانصيب ---
 @bot.command(name="سحب_اليانصيب")
 @commands.has_permissions(administrator=True)
 async def admin_draw_lottery(ctx):
@@ -403,6 +456,7 @@ async def admin_draw_lottery(ctx):
     get_user_data(winner)["wallet"] += prize
     lottery_tickets.clear()
     await ctx.send(f"🎉 **فاز باليانصيب <@{winner}> بمبلغ ${prize:,}**!")
+
 
 # ==========================================
 # 7. تشغيل البوت
