@@ -323,7 +323,7 @@ class BlackMarketSelect(discord.ui.Select):
 # --- لوحة التحكم التفاعلية الشاملة المحدثة بالكامل ---
 class CompleteInteractiveDashboardView(discord.ui.View):
     def __init__(self):
-    super().__init__(timeout=None)
+        super().__init__(timeout=None)
 
         # ==========================================
     # زر بدء العمل الوظيفي
