@@ -524,11 +524,20 @@ async def help_cmd(ctx):
     await ctx.send(embed=embed)
 
 # ==========================================
-# 12. تشغيل البوت المضمون (في نهاية الملف)
+# 12. تشغيل سيرفر الفلاسك والبوت بشكل صحيح
 # ==========================================
+
+# 1. تشغيل سيرفر Flask في خيط مستقل بالخلفية
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+threading.Thread(target=run_flask, daemon=True).start()
+
+# 2. جلب التوكين وتشغيل البوت في المسار الرئيسي
 TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
 
 if TOKEN:
+    print("🚀 جاري الاتصال بديسكورد...")
     bot.run(TOKEN)
 else:
-    print("❌ خطأ: لم يتم العثور على التوكين في متغيرات البيئة!") 
+    print("❌ خطأ: لم يتم العثور على التوكين في متغيرات البيئة بـ Render!") 
