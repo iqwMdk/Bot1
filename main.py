@@ -1,30 +1,39 @@
 import os
-import random
-import asyncio
-from typing import Optional
-from datetime import datetime, timedelta
-
+import threading
 import discord
 from discord.ext import commands
-from discord import app_commands
-
 from flask import Flask
-from threading import Thread
 
-# ==========================================
-# 1. إعداد خادم Web Service لمنع نوم Render
-# ==========================================
-app = Flask('')
+# ================================
+# 1. كود إبقاء البوت شغال على Render (Flask)
+# ================================
+app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "البوت يعمل بنجاح على الاستضافة السحابية!"
+    return "Bot is alive!"
 
-def keep_alive():
-    t = Thread(target=lambda: app.run(host='0.0.0.0', port=8080))
-    t.start()
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
 
-keep_alive()
+# تشغيل الفلاسك في الخلفية
+threading.Thread(target=run_flask).start()
+
+
+# ================================
+# 2. إعدادات وأوامر البوت الخاصة بك
+# ================================
+intents = discord.Intents.default()
+intents.message_content = True  # تأكد من تفعيل الصلاحيات
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f"✅ تم تشغيل البوت بنجاح باسم: {bot.user}")
+
+# --- هنا تضع بقية أوامر وإمبيدات البوت الخاصة بك ---
+
 
 # ==========================================
 # 2. إعدادات البوت والـ Intents
