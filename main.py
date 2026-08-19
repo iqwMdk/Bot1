@@ -458,7 +458,7 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         weapons_list = "\n".join([f"🔸 {w}" for w in inv])
         await interaction.response.send_message(f"🎒 **محتويات حقيبتك الشخصية:**\n{weapons_list}", ephemeral=True)
 
-        @discord.ui.button(label="📈 سوق الأسهم", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="📈 سوق الأسهم", style=discord.ButtonStyle.secondary, row=1)
     async def btn_stocks(self, interaction: discord.Interaction, button: discord.ui.Button):
         update_stocks_market()
         embed = discord.Embed(title="📈 مؤشرات وسوق الأسهم المحلية", color=discord.Color.green())
