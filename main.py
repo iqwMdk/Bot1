@@ -12,21 +12,6 @@ from discord import app_commands
 from flask import Flask
 
 # ==========================================
-# 1. إعداد خادم Web Service لمنع نوم Render
-# ==========================================
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "البوت يعمل بنجاح على الاستضافة السحابية!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
-
-# تشغيل الخادم في الخلفية
-threading.Thread(target=run_flask).start()
-
-# ==========================================
 # 2. إعدادات البوت والـ Intents
 # ==========================================
 intents = discord.Intents.default()
@@ -523,23 +508,12 @@ async def help_cmd(ctx):
     )
     await ctx.send(embed=embed)
 
+## ==========================================
+# تشغيل البوت المباشر
 # ==========================================
-# 12. التشغيل المجاني الموحد (Flask + Discord)
-# ==========================================
+TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
 
-@bot.event
-async def on_ready():
-    print(f"✅ تم تشغيل البوت بنجاح باسم: {bot.user.name}")
-
-def run_all():
-    TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
-    if not TOKEN:
-        print("❌ خطأ: لم يتم العثور على التوكين بـ Render!")
-        return
-
-    # تشغيل البوت داخل هاندلر الفلاسك ليشتغل السيرفر والبوت سوياً
-    bot.loop.create_task(bot.start(TOKEN))
-    app.run(host='0.0.0.0', port=8080)
-
-if __name__ == "__main__":
-    run_all()
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ خطأ: لم يتم العثور على التوكين!")
