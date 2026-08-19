@@ -84,8 +84,29 @@ ROBBERIES = {
     "3": {"name": "البنك المركزي", "reward": 100000, "risk": 0.8}
 }
 
-current_auction = {"active": False, "item": None, "price": 0, "highest_bidder": None}
-lottery_tickets = []
+# ==========================================
+# 3. قواعد البيانات وسوق الأسهم المتطور
+# ==========================================
+users_data = {}
+gangs_data = {}
+
+# سوق الأسهم المتطور مع نسب وتغييرات عشوائية
+STOCKS = {
+    "ARAMCO": {"name": "أرامكو", "price": 100, "change": 2.5, "trend": "📈"},
+    "STC": {"name": "الاتصالات", "price": 50, "change": -1.2, "trend": "📉"},
+    "RAJHI": {"name": "الراجحي", "price": 80, "change": 4.1, "trend": "📈"}
+}
+
+def update_stocks_market():
+    """دالة تحديث أسعار الأسهم وتوليد نسب تغيير عشوائية"""
+    for code, info in STOCKS.items():
+        change_pct = round(random.uniform(-5.0, 5.0), 2)
+        multiplier = 1 + (change_pct / 100)
+        new_price = max(10, int(info["price"] * multiplier))
+        
+        info["price"] = new_price
+        info["change"] = change_pct
+        info["trend"] = "📈" if change_pct >= 0 else "📉"
 
 def get_user_data(user_id: int):
     if user_id not in users_data:
@@ -100,14 +121,45 @@ def get_user_data(user_id: int):
             "stocks": {},
             "dirty_money": 0,
             "inventory": [],
-            "contract": None
+            "contract": None,
+            "last_profit_collect": 0  # لمنع قلتش جمع الأرباح
         }
     return users_data[user_id]
+
 
 
 # ==========================================
 # 4. المكونات التفاعلية القوائم والأزرار (UI Modals & Selects)
 # ==========================================
+# --- قائمة متجر الأسلحة المنسدلة ---
+class WeaponsShopSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label=item['name'], 
+                value=key, 
+                description=f"السعر: ${item['price']:,} | تقليل الخطر: +{int(item['bonus']*100)}%"
+            )
+            for key, item in WEAPONS_MARKET.items()
+        ]
+        super().__init__(placeholder="اختر سلاحاً لشراؤه...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected = self.values[0]
+        weapon = WEAPONS_MARKET[selected]
+        user_data = get_user_data(interaction.user.id)
+        
+        if weapon["name"] in user_data.get("inventory", []):
+            await interaction.response.send_message("❌ أنت تملك هذا السلاح مسبقاً في حقيبتك!", ephemeral=True)
+            return
+            
+        if user_data["wallet"] < weapon["price"]:
+            await interaction.response.send_message("❌ لا تملك كاش كافي في محفظتك للشراء!", ephemeral=True)
+            return
+            
+        user_data["wallet"] -= weapon["price"]
+        user_data.setdefault("inventory", []).append(weapon["name"])
+        await interaction.response.send_message(f"🔫 تم شراء **{weapon['name']}** بنجاح وإضافته إلى حقيبتك!", ephemeral=True)
 
 # --- قائمة شراء العقارات المنسدلة ---
 class RealEstateSelect(discord.ui.Select):
@@ -228,16 +280,17 @@ class BlackMarketSelect(discord.ui.Select):
                 await interaction.response.send_message("❌ ليس لديك أموال غير مغسولة حالياً.", ephemeral=True)
 
 # --- لوحة التحكم التفاعلية الشاملة للأزرار والقوائم ---
+# --- لوحة التحكم التفاعلية الشاملة المحدثة بالكامل ---
 class CompleteInteractiveDashboardView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # 1. الصف الأول: سوق العقارات + الحساب والمال
+    # 1. الصف الأول: العقارات، الحساب، جمع الأرباح (بدون قلتش)
     @discord.ui.button(label="🏢 سوق العقارات والشركات", style=discord.ButtonStyle.success, row=0)
     async def btn_real_estate(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = discord.ui.View()
         view.add_item(RealEstateSelect())
-        await interaction.response.send_message("🏬 **اختر العقار أو الشائعة التي ترغب بشراؤها مباشرة:**", view=view, ephemeral=True)
+        await interaction.response.send_message("🏬 **اختر العقار الذي ترغب بشراؤه مباشرة:**", view=view, ephemeral=True)
 
     @discord.ui.button(label="💳 رصيدي وحسابي", style=discord.ButtonStyle.primary, row=0)
     async def btn_balance(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -250,34 +303,118 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         )
         await interaction.response.send_message(msg, ephemeral=True)
 
-    # 2. الصف الثاني: جمع الأرباح + السيارات + الأسهم
-    @discord.ui.button(label="💰 جمع أرباح العقارات", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="💰 جمع الأرباح (24h)", style=discord.ButtonStyle.success, row=0)
     async def btn_collect_profit(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = get_user_data(interaction.user.id)
         if not data["real_estates"]:
             await interaction.response.send_message("❌ لا تملك عقارات أو شركات حالياً!", ephemeral=True)
             return
+
+                # فحص كولد داون 3 ساعات (10800 ثانية)
+        last_collect = data.get("last_profit_collect", 0)
+        now = time.time()
+        cooldown = 10800  # <--- غير الرقم هنا إلى 10800
+
+        if now - last_collect < cooldown:
+            remaining = int(cooldown - (now - last_collect))  # <--- وهنا أيضاً
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+            await interaction.response.send_message(
+                f"⏳ **استلمت أرباحك مسبقاً!**\nيمكنك الجمع مجدداً بعد: **{hours} ساعة و {minutes} دقيقة**.", 
+                ephemeral=True
+            )
+            return
+
+
         total = 0
         for name in data["real_estates"]:
             for item in real_estate_market.values():
                 if item["name"] == name:
                     total += item["income"]
-        data["wallet"] += total
-        await interaction.response.send_message(f"💰 تم استلام كافة أرباح العقارات والشركات بقيمة **${total:,}**!", ephemeral=True)
 
-    @discord.ui.button(label="🏎️ معرض السيارات", style=discord.ButtonStyle.primary, row=1)
-    async def btn_cars(self, interaction: discord.Interaction, button: discord.ui.Button):
-        msg = "🏎️ **معرض المركبات المتاحة:**\n"
-        for name, price in CARS_MARKET.items():
-            msg += f"• **{name}**: ${price:,}\n"
-        await interaction.response.send_message(msg, ephemeral=True)
+        data["wallet"] += total
+        data["last_profit_collect"] = now
+        await interaction.response.send_message(f"💰 تم استلام أرباحك اليومية لكافة العقارات بقيمة **${total:,}**!", ephemeral=True)
+
+    # 2. الصف الثاني: الأسلحة، الحقيبة، السيارات، والأسهم المحدثة
+    @discord.ui.button(label="🔫 متجر الأسلحة", style=discord.ButtonStyle.danger, row=1)
+    async def btn_weapons_shop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = discord.ui.View()
+        view.add_item(WeaponsShopSelect())
+        await interaction.response.send_message("🔫 **اختر السلاح المراد شراؤه لزيادة نسبة نجاح السرقات:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="🎒 حقيبتي", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_my_inv(self, interaction: discord.Interaction, button: discord.ui.Button):
+        inv = get_user_data(interaction.user.id).get("inventory", [])
+        if not inv:
+            await interaction.response.send_message("🎒 حقيبتك فارغة حالياً.", ephemeral=True)
+            return
+        weapons_list = "\n".join([f"🔸 {w}" for w in inv])
+        await interaction.response.send_message(f"🎒 **محتويات حقيبتك الشخصية:**\n{weapons_list}", ephemeral=True)
 
     @discord.ui.button(label="📈 سوق الأسهم", style=discord.ButtonStyle.secondary, row=1)
     async def btn_stocks(self, interaction: discord.Interaction, button: discord.ui.Button):
-        msg = "📈 **مؤشرات أسعار الأسهم:**\n"
+        update_stocks_market() # تحديث الأسعار والنسب عند كل فتح
+        embed = discord.Embed(title="📈 مؤشرات وسوق الأسهم المحلية", color=discord.Color.green())
         for code, info in STOCKS.items():
-            msg += f"• **[{code}]** {info['name']}: ${info['price']}\n"
+            sign = "+" if info["change"] >= 0 else ""
+            embed.add_field(
+                name=f"{info['trend']} {info['name']} ({code})",
+                value=f"السعر: **${info['price']}**\nالتغير: **{sign}{info['change']}%**",
+                inline=True
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # 3. الصف الثالث: العصابات، العقود، السرقات
+    @discord.ui.button(label="🏴‍☠️ عصابتي", style=discord.ButtonStyle.primary, row=2)
+    async def btn_my_gang(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = get_user_data(interaction.user.id)
+        if not data["gang"]:
+            await interaction.response.send_message("❌ أنت لست عضواً في أي عصابة حالياً!", ephemeral=True)
+            return
+        g_name = data["gang"]
+        g_info = gangs_data.get(g_name, {"members": [], "bank": 0, "owner": None})
+        msg = (
+            f"🏴‍☠️ **بيانات العصابة [{g_name}]:**\n"
+            f"• القائد: <@{g_info.get('owner', 'غير معروف')}>\n"
+            f"• الأعضاء: {len(g_info['members'])}\n"
+            f"• الخزينة: **${g_info['bank']:,}**"
+        )
         await interaction.response.send_message(msg, ephemeral=True)
+
+    @discord.ui.button(label="📜 عقود العصابة", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_contracts(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = discord.ui.View()
+        view.add_item(ContractSelect())
+        await interaction.response.send_message("📜 **اختر العقد المراد تنفيذه لصالح عصابتك:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="💣 السرقات الجماعية", style=discord.ButtonStyle.danger, row=2)
+    async def btn_robberies(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = discord.ui.View()
+        view.add_item(RobberySelect())
+        await interaction.response.send_message("💣 **اختر المنشأة المراد تنفيذ السرقة عليها:**", view=view, ephemeral=True)
+
+    # 4. الصف الرابع: السوق الأسود، اليانصيب، ودليل الأوامر الكتابية
+    @discord.ui.button(label="💀 السوق الأسود", style=discord.ButtonStyle.danger, row=3)
+    async def btn_black_market(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = discord.ui.View()
+        view.add_item(BlackMarketSelect())
+        await interaction.response.send_message("💀 **قائمة المبيعات في السوق الأسود:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="📖 دليل الأوامر الكتابية", style=discord.ButtonStyle.primary, row=3)
+    async def btn_help_guide(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            title="📖 دليل الأوامر الكتابية المطلوبة",
+            description="هناك بعض العمليات المتقدمة التي تتطلب إدخال أسماء أو مبالغ محددة عبر الشات:",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="📜 عقد العمل بالأزرار", value="`!عقد @اسم_اللاعب [المبلغ] [الأيام]`\nارسال عقد وظيفي براتب محدد للاعب.", inline=False)
+        embed.add_field(name="💸 تحويل كاش", value="`!تحويل @اسم_اللاعب [المبلغ]`\nتحويل أموال شخصية للاعب آخر.", inline=False)
+        embed.add_field(name="🏴‍☠️ إنشاء عصابة", value="`!انشاء_عصابة [الاسم]`\nتأسيس مقر جديد بـ $50,000.", inline=False)
+        embed.add_field(name="🧼 تغسيل أموال", value="`!تغسيل [المبلغ]`\nتحويل كاش غير مشروع لكاش نظيف.", inline=False)
+        embed.add_field(name="💼 العمل واليومية", value="`!عمل` | `!يومية` | `!استلام_العقد`", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
     # 3. الصف الثالث: عصابتي + العقود + السرقات
     @discord.ui.button(label="⬛ عصابتي والشركات", style=discord.ButtonStyle.danger, row=2)
@@ -329,14 +466,22 @@ class CompleteInteractiveDashboardView(discord.ui.View):
 # 5. الأوامر المباشرة والنصية
 # ==========================================
 
-@bot.command(name="مساعدة", aliases=["اوامر", "لوحة", "داشبورد"])
+@# ==========================================
+# 5. الأوامر المباشرة والنصية المحدثة
+# ==========================================
+
+@bot.command(name="مساعدة", aliases=["اوامر", "لوحة", "داشبورد", "الاوامر"])
 async def cmd_dashboard(ctx):
     embed = discord.Embed(
-        title="🌐 اللوحة الاقتصادية التفاعلية العامة",
-        description="استخدم الأزرار والقوائم المنسدلة للتحكم في عمليات الحساب، الشركات، العقارات، والعصابات بنقرة واحدة:",
+        title="🌐 اللوحة الاقتصادية والتفاعلية العامة",
+        description=(
+            "أهلاً بك! يمكنك التحكم بجميع الأنشطة (شراء، بيع، أسهم، أسلحة، وسرقات) عبر الأزرار.\n\n"
+            "💡 **الأوامر التي تحتاج كتابة فقط:** اضغط على زر **[📖 دليل الأوامر الكتابية]** بالأسفل لمعرفة كيفية كتابتها!"
+        ),
         color=discord.Color.gold()
     )
     await ctx.send(embed=embed, view=CompleteInteractiveDashboardView())
+
 
 @bot.command(name="رصيدي")
 async def cmd_balance(ctx):
