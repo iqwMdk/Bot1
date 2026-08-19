@@ -323,12 +323,12 @@ class BlackMarketSelect(discord.ui.Select):
 # --- لوحة التحكم التفاعلية الشاملة المحدثة بالكامل ---
 class CompleteInteractiveDashboardView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+    super().__init__(timeout=None)
 
         # ==========================================
     # زر بدء العمل الوظيفي
     # ==========================================
-        @discord.ui.button(label="💼 ابدأ العمل", style=discord.ButtonStyle.green, row=2)
+    @discord.ui.button(label="💼 ابدأ العمل", style=discord.ButtonStyle.green, row=2)
     async def btn_do_work(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
         user_data = get_user_data(user_id)
