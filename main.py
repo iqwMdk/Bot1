@@ -2,6 +2,7 @@ import os
 import random
 import asyncio
 import threading
+import time
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -39,6 +40,14 @@ bot.remove_command("help")
 users_data = {}
 gangs_data = {}
 
+# متجر الأسلحة (كل سلاح يقلل نسبة الخطر في السرقات)
+WEAPONS_MARKET = {
+    "1": {"name": "سكين", "price": 10000, "bonus": 0.03}, # يقلل الخطر 3%
+    "2": {"name": "مسدس", "price": 35000, "bonus": 0.07}, # يقلل الخطر 7%
+    "3": {"name": "رشاش", "price": 80000, "bonus": 0.12}, # يقلل الخطر 12%
+    "4": {"name": "قناص", "price": 150000, "bonus": 0.20} # يقلل الخطر 20%
+}
+
 real_estate_market = {
     "1": {"name": "محل تجاري", "price": 50000, "income": 1500},
     "2": {"name": "مبنى مكاتب", "price": 150000, "income": 5000},
@@ -64,9 +73,9 @@ STOCKS = {
 }
 
 CARS_MARKET = {
-    "كامري": 20000,
-    "مرسيدس": 80000,
-    "فراري": 200000
+    "سسكي": 20000,
+    "كامري": 80000,
+    "لكزس": 200000
 }
 
 ROBBERIES = {
@@ -89,9 +98,12 @@ def get_user_data(user_id: int):
             "gang_invite": None,
             "immunity_until": None,
             "stocks": {},
-            "dirty_money": 0
+            "dirty_money": 0,
+            "inventory": [],
+            "contract": None
         }
     return users_data[user_id]
+
 
 # ==========================================
 # 4. المكونات التفاعلية القوائم والأزرار (UI Modals & Selects)
@@ -118,10 +130,11 @@ class RealEstateSelect(discord.ui.Select):
         await interaction.response.send_message(f"🎉 تم شراء **{estate['name']}** بنجاح وتم خصم ${estate['price']:,}!", ephemeral=True)
 
 # --- قائمة اختيار السرقات المباشرة ---
+# --- قائمة اختيار السرقات المباشرة ---
 class RobberySelect(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label=item['name'], value=key, description=f"المكافأة: ${item['reward']:,} | نسبة الخطر: {int(item['risk']*100)}%")
+            discord.SelectOption(label=item['name'], value=key, description=f"المكافأة: ${item['reward']:,} | نسبة الخطر الأساسية: {int(item['risk']*100)}%")
             for key, item in ROBBERIES.items()
         ]
         super().__init__(placeholder="اختر هدف السرقة...", min_values=1, max_values=1, options=options)
@@ -131,13 +144,37 @@ class RobberySelect(discord.ui.Select):
         if not data["gang"]:
             await interaction.response.send_message("❌ ينبغي أن تكون عضواً في عصابة لبدء السرقة!", ephemeral=True)
             return
+            
         selected = self.values[0]
         rob = ROBBERIES[selected]
-        if random.random() > rob["risk"]:
-            gangs_data[data["gang"]]["bank"] += rob["reward"]
-            await interaction.response.send_message(f"🔥 **نجحت السرقة!** تمت إضافة **${rob['reward']:,}** إلى خزينة العصابة!", ephemeral=True)
+        gang_name = data["gang"]
+        
+        # 1. حساب بونص الأعضاء (تقليل الخطر 3% لكل عضو إضافي)
+        members_count = len(gangs_data[gang_name]["members"])
+        gang_bonus = (members_count - 1) * 0.03
+
+        # 2. حساب بونص أقوى سلاح في حقيبة اللاعب
+        weapon_bonus = 0
+        user_inv = data.get("inventory", [])
+        for w in user_inv:
+            for w_id, w_info in WEAPONS_MARKET.items():
+                if w_info["name"] == w and w_info["bonus"] > weapon_bonus:
+                    weapon_bonus = w_info["bonus"]
+
+        # 3. حساب نسبة الخطر النهائية بعد الخصم (حد أدنى 5% خطر)
+        effective_risk = max(0.05, rob["risk"] - gang_bonus - weapon_bonus)
+
+        if random.random() > effective_risk:
+            gangs_data[gang_name]["bank"] += rob["reward"]
+            await interaction.response.send_message(
+                f"🔥 **نجحت السرقة بفضل سلاحك ودعم {members_count} أعضاء!**\nتمت إضافة **${rob['reward']:,}** إلى خزينة العصابة.", 
+                ephemeral=True
+            )
         else:
-            await interaction.response.send_message("🚨 **فشلت السرقة!** حاصرت قوات الشرطة المكان وهربت العصابة.", ephemeral=True)
+            await interaction.response.send_message(
+                "🚨 **فشلت السرقة!** حاصرتكم الشرطة وهربتم بصعوبة بدون أرباح.", 
+                ephemeral=True
+            )
 
 # --- قائمة العقود المنسدلة ---
 class ContractSelect(discord.ui.Select):
@@ -456,6 +493,146 @@ async def admin_draw_lottery(ctx):
     get_user_data(winner)["wallet"] += prize
     lottery_tickets.clear()
     await ctx.send(f"🎉 **فاز باليانصيب <@{winner}> بمبلغ ${prize:,}**!")
+
+# ==========================================
+# 🔫 متجر الأسلحة والحقيبة
+# ==========================================
+
+@bot.command(name="متجر_الاسلحة")
+async def weapons_shop(ctx):
+    shop_text = "🔫 **متجر الأسلحة** (تزيد نسبة نجاح السرقات):\n\n"
+    for w_id, w_info in WEAPONS_MARKET.items():
+        shop_text += f"**[{w_id}] {w_info['name']}** | السعر: **${w_info['price']:,}** | نسبة النجاح المضافة: **+{int(w_info['bonus']*100)}%**\n"
+    shop_text += "\nلشراء سلاح اكتب: `!شراء_سلاح [رقم_السلاح]`"
+    await ctx.send(shop_text)
+
+@bot.command(name="شراء_سلاح")
+async def buy_weapon(ctx, weapon_id: str = None):
+    if not weapon_id or weapon_id not in WEAPONS_MARKET:
+        return await ctx.send("❌ يرجى كتابة رقم سلاح صحيح. مثال: `!شراء_سلاح 1`")
+    
+    weapon = WEAPONS_MARKET[weapon_id]
+    user_data = get_user_data(ctx.author.id)
+    
+    if weapon["name"] in user_data.get("inventory", []):
+        return await ctx.send("❌ أنت تملك هذا السلاح مسبقاً في حقيبتك!")
+        
+    if user_data["wallet"] < weapon["price"]:
+        return await ctx.send("❌ لا تملك كاش كافي في محفظتك لشراء هذا السلاح!")
+        
+    user_data["wallet"] -= weapon["price"]
+    user_data.setdefault("inventory", []).append(weapon["name"])
+    await ctx.send(f"🔫 تم شراء **{weapon['name']}** بنجاح! السلاح الآن في حقيبتك وستزيد فرصك في السرقات.")
+
+@bot.command(name="حقيبتي")
+async def my_inventory(ctx):
+    inv = get_user_data(ctx.author.id).get("inventory", [])
+    if not inv: 
+        return await ctx.send("🎒 حقيبتك فارغة حالياً.")
+    
+    weapons_list = "\n".join([f"🔸 {w}" for w in inv])
+    await ctx.send(f"🎒 **حقيبتك الشخصية تحتوي على:**\n{weapons_list}")
+
+# ==========================================
+# 📜 نظام العقود التفاعلي بالأزرار
+# ==========================================
+
+class ContractButtonsView(discord.ui.View):
+    def __init__(self, target_member, gang_name, amount, days):
+        super().__init__(timeout=86400) # مهلة يوم كامل
+        self.target_member = target_member
+        self.gang_name = gang_name
+        self.amount = amount
+        self.days = days
+
+    @discord.ui.button(label="✍️ قبول وتوقيع العقد", style=discord.ButtonStyle.success)
+    async def accept_contract(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # التأكد أن من يضغط الزر هو العضو المعني بالعقد فقط
+        if interaction.user.id != self.target_member.id:
+            await interaction.response.send_message("❌ هذا العقد ليس موجهاً لك!", ephemeral=True)
+            return
+
+        # التأكد من توفر المبلغ في الخزينة عند التوقيع
+        if gangs_data[self.gang_name]["bank"] < self.amount:
+            await interaction.response.send_message("❌ تعذر التوقيع! خزينة العصابة لا تملك المبلغ الكافي حالياً.", ephemeral=True)
+            return
+
+        # خصم المبلغ من الخزينة وإضافة العضو
+        gangs_data[self.gang_name]["bank"] -= self.amount
+        gangs_data[self.gang_name]["members"].append(interaction.user.id)
+
+        user_data = get_user_data(interaction.user.id)
+        user_data["gang"] = self.gang_name
+        claim_time = time.time() + (self.days * 86400)
+        user_data["contract"] = {"amount": self.amount, "claim_time": claim_time}
+
+        # تعطيل الأزرار بعد التوقيع
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+        await interaction.response.send_message(
+            f"🎉 **مبروك!** تم توقيع العقد وانضمامك رسمياً لعصابة **{self.gang_name}**!\n"
+            f"يمكنك استلام مستحقاتك (${self.amount:,}) بعد انتهاء المدة بأمر: `!استلام_العقد`"
+        )
+
+    @discord.ui.button(label="❌ رفض العقد", style=discord.ButtonStyle.danger)
+    async def reject_contract(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.target_member.id:
+            await interaction.response.send_message("❌ هذا العقد ليس موجهاً لك!", ephemeral=True)
+            return
+
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+        await interaction.response.send_message(f"🚫 تم رفض العقد الموجه من عصابة **{self.gang_name}**.")
+
+@bot.command(name="عقد")
+async def invite_contract(ctx, member: discord.Member = None, amount: int = None, days: int = None):
+    leader_data = get_user_data(ctx.author.id)
+    gang_name = leader_data.get("gang")
+    
+    if not gang_name or gangs_data[gang_name]["owner"] != ctx.author.id:
+        return await ctx.send("❌ يجب أن تكون قائد عصابة لتقديم عقود للأعضاء!")
+    if not member or not amount or not days:
+        return await ctx.send("❌ الاستخدام الصحيح: `!عقد @العضو [المبلغ] [عدد_الايام]`\nمثال: `!عقد @محمد 50000 3`")
+    if member.id == ctx.author.id:
+        return await ctx.send("❌ لا يمكنك تقديم عقد لنفسك!")
+        
+    if gangs_data[gang_name]["bank"] < amount:
+        return await ctx.send("❌ خزينة العصابة لا تملك هذا المبلغ لتغطية العقد!")
+
+    view = ContractButtonsView(target_member=member, gang_name=gang_name, amount=amount, days=days)
+    
+    embed = discord.Embed(
+        title="📜 عرض عقد انضمام رسمي",
+        description=(
+            f"يقدم القائد {ctx.author.mention} عقداً للعضو {member.mention} للانضمام إلى **{gang_name}**.\n\n"
+            f"💵 **قيمة العقد:** ${amount:,}\n"
+            f"⏳ **مدة العقد:** {days} أيام\n\n"
+            f"اضغط على الأزرار أدناه للقبول والتوقيع أو الرفض:"
+        ),
+        color=discord.Color.blue()
+    )
+    
+    await ctx.send(content=f"{member.mention} لديك عرض عقد جديد!", embed=embed, view=view)
+
+@bot.command(name="استلام_العقد")
+async def claim_contract(ctx):
+    user_data = get_user_data(ctx.author.id)
+    contract = user_data.get("contract")
+    
+    if not contract: 
+        return await ctx.send("❌ ليس لديك أي عقد مستحق للاستلام!")
+    
+    if time.time() < contract["claim_time"]:
+        remaining_hours = int((contract["claim_time"] - time.time()) / 3600)
+        return await ctx.send(f"⏳ لم يحن وقت استلام قيمة العقد بعد! المتبقي تقريباً: **{remaining_hours} ساعة**.")
+        
+    user_data["wallet"] += contract["amount"]
+    amount = contract["amount"]
+    user_data["contract"] = None
+    await ctx.send(f"🎉 انتهت مدة العقد بنجاح! تم تحويل **${amount:,}** إلى محفظتك الشخصية.")
 
 
 # ==========================================
