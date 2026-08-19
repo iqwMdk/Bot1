@@ -6,6 +6,22 @@ import discord
 from discord.ext import commands
 from discord.ui import Button, View, Select
 
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def keep_alive():
+    t = Thread(target=lambda: app.run(host='0.0.0.0', port=8080))
+    t.start()
+
+# تشغيل الخادم الوهمي فوراً
+keep_alive()
+
 # إعداد البوت
 intents = discord.Intents.default()
 intents.message_content = True
