@@ -524,22 +524,22 @@ async def help_cmd(ctx):
     await ctx.send(embed=embed)
 
 # ==========================================
-# 12. تشغيل السيرفر والبوت معاً بدون تجميد
+# 12. التشغيل المجاني الموحد (Flask + Discord)
 # ==========================================
-import asyncio
 
-async def main():
-    # تشغيل الفلاسك في الخلفية
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, lambda: app.run(host='0.0.0.0', port=8080, use_reloader=False))
-    
-    # جلب التوكين وتشغيل البوت
+@bot.event
+async def on_ready():
+    print(f"✅ تم تشغيل البوت بنجاح باسم: {bot.user.name}")
+
+def run_all():
     TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
-    if TOKEN:
-        print("🚀 جاري الاتصال بديسكورد...")
-        await bot.start(TOKEN)
-    else:
-        print("❌ لم يتم العثور على التوكين في Render!")
+    if not TOKEN:
+        print("❌ خطأ: لم يتم العثور على التوكين بـ Render!")
+        return
+
+    # تشغيل البوت داخل هاندلر الفلاسك ليشتغل السيرفر والبوت سوياً
+    bot.loop.create_task(bot.start(TOKEN))
+    app.run(host='0.0.0.0', port=8080)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_all()
