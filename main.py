@@ -559,3 +559,7 @@ async def help_cmd(ctx):
 # 11. تشغيل البوت
 # ==========================================
 TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ لم يتم العثور على التوكين في متغيرات البيئة!")
