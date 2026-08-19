@@ -126,6 +126,27 @@ def get_user_data(user_id: int):
         }
     return users_data[user_id]
 
+async def update_user_role(member: discord.Member, work_count):
+    # مسميات الرولات كما هي في سيرفر الديسكورد
+    role_mapping = {
+        "🔰 متدرب": "🔰 متدرب", 
+        "💼 موظف": "💼 موظف", 
+        "👔 مشرف": "👔 مشرف", 
+        "👑 مدير": "👑 مدير"
+    }
+    
+    current_rank, _ = get_user_rank(work_count)
+    role_name = role_mapping.get(current_rank["name"])
+    role = discord.utils.get(member.guild.roles, name=role_name)
+    
+    if role:
+        # إزالة الرولات القديمة للوظائف
+        all_job_roles = [discord.utils.get(member.guild.roles, name=n) for n in role_mapping.values()]
+        await member.remove_roles(*[r for r in all_job_roles if r in member.roles])
+        
+        # إضافة الرول الجديد
+        if role not in member.roles:
+            await member.add_roles(role)
 
 
 # ==========================================
@@ -251,6 +272,25 @@ class ContractSelect(discord.ui.Select):
         gangs_data[data["gang"]]["bank"] += c["reward"]
         await interaction.response.send_message(f"📜 تم إبرام وتنفيذ **{c['name']}** ونزول **${c['reward']:,}** في خزينة العصابة!", ephemeral=True)
 
+JOB_RANKS = [
+    {"name": "🔰 متدرب", "min_work": 0, "min_salary": 1000, "max_salary": 3000},
+    {"name": "💼 موظف", "min_work": 5, "min_salary": 3000, "max_salary": 5000},
+    {"name": "👔 مشرف", "min_work": 20, "min_salary": 5000, "max_salary": 7500},
+    {"name": "👑 مدير", "min_work": 30, "min_salary": 8000, "max_salary": 12000}
+]
+
+def get_user_rank(work_count):
+    current_rank = JOB_RANKS[0]
+    next_rank = None
+    for i, rank in enumerate(JOB_RANKS):
+        if work_count >= rank["min_work"]:
+            current_rank = rank
+            if i + 1 < len(JOB_RANKS):
+                next_rank = JOB_RANKS[i + 1]
+        else:
+            break
+    return current_rank, next_rank
+
 # --- قائمة السوق الأسود (Black Market) ---
 class BlackMarketSelect(discord.ui.Select):
     def __init__(self):
@@ -285,6 +325,72 @@ class CompleteInteractiveDashboardView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
+        # ==========================================
+    # زر بدء العمل الوظيفي
+    # ==========================================
+        @discord.ui.button(label="💼 ابدأ العمل", style=discord.ButtonStyle.green, row=2)
+    async def btn_do_work(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = interaction.user.id
+        user_data = get_user_data(user_id)
+        
+        import time
+        current_time = time.time()
+        cooldowns = user_data.setdefault("work_cooldown", 0)
+        
+        if current_time < cooldowns:
+            remaining = int(cooldowns - current_time)
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+            return await interaction.response.send_message(f"⏳ يجب عليك الانتظار **{hours} ساعة و {minutes} دقيقة** قبل أن تتمكن من العمل مرة أخرى.", ephemeral=True)
+        
+        user_data["work_cooldown"] = current_time + 3600
+        
+        # 1. زيادة مرات العمل
+        work_count = user_data.get("work_count", 0) + 1
+        user_data["work_count"] = work_count
+        
+        # ⬅️ 2. [حط هذا السطر هنا] تحديث رول العضو في الديسكورد تلقائياً
+        try:
+            await update_user_role(interaction.user, work_count)
+        except Exception as e:
+            print(f"خطأ في إعطاء الرول: {e}")
+
+        # 3. حساب الراتب وباقي الكود...
+        current_rank, _ = get_user_rank(work_count)
+        salary = random.randint(current_rank["min_salary"], current_rank["max_salary"])
+        user_data["wallet"] = user_data.get("wallet", 0) + salary
+        
+        embed = discord.Embed(title="💼 لوحة العمل الوظيفي", color=discord.Color.blue())
+        embed.add_field(name="الرتبة الحالية", value=current_rank["name"], inline=True)
+        embed.add_field(name="الراتب المستلم", value=f"**${salary:,}** 💵", inline=True)
+        embed.add_field(name="إجمالي مرات العمل", value=str(work_count), inline=False)
+        embed.set_footer(text="يمكنك العمل مرة أخرى بعد ساعة كاملة.")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ==========================================
+    # زر السجل الوظيفي
+    # ==========================================
+    @discord.ui.button(label="📊 وثائق وظيفتي", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_job_info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = interaction.user.id
+        user_data = get_user_data(user_id)
+        work_count = user_data.get("work_count", 0)
+        
+        current_rank, next_rank = get_user_rank(work_count)
+        
+        embed = discord.Embed(title=f"📋 السجل الوظيفي لـ {interaction.user.display_name}", color=discord.Color.gold())
+        embed.add_field(name="الرتبة الحالية", value=current_rank["name"], inline=True)
+        embed.add_field(name="عدد مرات العمل", value=str(work_count), inline=True)
+        
+        if next_rank:
+            needed = next_rank["min_work"] - work_count
+            embed.add_field(name="الترقية القادمة", value=f"إلى **{next_rank['name']}** (متبقي **{needed}** مرات عمل)", inline=False)
+        else:
+            embed.add_field(name="الترقية القادمة", value="لقد وصلت إلى أعلى رتبة متاحـة! 👑", inline=False)
+            
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     # 1. الصف الأول: العقارات، الحساب، جمع الأرباح (بدون قلتش)
     @discord.ui.button(label="🏢 سوق العقارات والشركات", style=discord.ButtonStyle.success, row=0)
     async def btn_real_estate(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -303,7 +409,7 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         )
         await interaction.response.send_message(msg, ephemeral=True)
 
-    @discord.ui.button(label="💰 جمع الأرباح (24h)", style=discord.ButtonStyle.success, row=0)
+    @discord.ui.button(label="💰 جمع الأرباح (3h)", style=discord.ButtonStyle.success, row=0)
     async def btn_collect_profit(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = get_user_data(interaction.user.id)
         if not data["real_estates"]:
@@ -352,9 +458,9 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         weapons_list = "\n".join([f"🔸 {w}" for w in inv])
         await interaction.response.send_message(f"🎒 **محتويات حقيبتك الشخصية:**\n{weapons_list}", ephemeral=True)
 
-    @discord.ui.button(label="📈 سوق الأسهم", style=discord.ButtonStyle.secondary, row=1)
+        @discord.ui.button(label="📈 سوق الأسهم", style=discord.ButtonStyle.secondary, row=1)
     async def btn_stocks(self, interaction: discord.Interaction, button: discord.ui.Button):
-        update_stocks_market() # تحديث الأسعار والنسب عند كل فتح
+        update_stocks_market()
         embed = discord.Embed(title="📈 مؤشرات وسوق الأسهم المحلية", color=discord.Color.green())
         for code, info in STOCKS.items():
             sign = "+" if info["change"] >= 0 else ""
@@ -363,7 +469,9 @@ class CompleteInteractiveDashboardView(discord.ui.View):
                 value=f"السعر: **${info['price']}**\nالتغير: **{sign}{info['change']}%**",
                 inline=True
             )
+        embed.set_footer(text="الشراء والبيع عبر الأوامر النصية: !شراء_سهم | !بيع_سهم | !اسهمي")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
     # 3. الصف الثالث: العصابات، العقود، السرقات
     @discord.ui.button(label="🏴‍☠️ عصابتي", style=discord.ButtonStyle.primary, row=2)
@@ -557,6 +665,78 @@ async def cmd_create_gang(ctx, *, name: str = None):
     data["gang"] = name
     gangs_data[name] = {"owner": ctx.author.id, "members": [ctx.author.id], "bank": 0}
     await ctx.send(f"🏴‍☠️ تم إنشاء **{name}** بنجاح!")
+# ==========================================
+# 📈 نظام تداول الأسهم (شراء / بيع / محفظة)
+# ==========================================
+
+@bot.command(name="شراء_سهم")
+async def buy_stock(ctx, code: str = None, amount: int = None):
+    if not code or not amount or amount <= 0:
+        return await ctx.send("❌ الاستخدام الصحيح: `!شراء_سهم [رمز_السهم] [العدد]`\nمثال: `!شراء_سهم ARAMCO 5`")
+    
+    code = code.upper()
+    if code not in STOCKS:
+        return await ctx.send("❌ رمز السهم غير صحيح! الرموز المتاحة: `ARAMCO`, `STC`, `RAJHI`")
+    
+    stock = STOCKS[code]
+    total_cost = stock["price"] * amount
+    user_data = get_user_data(ctx.author.id)
+    
+    if user_data["wallet"] < total_cost:
+        return await ctx.send(f"❌ لا تملك كاش كافي! تكلفة شراء {amount} أسهم هي **${total_cost:,}**.")
+    
+    user_data["wallet"] -= total_cost
+    user_stocks = user_data.setdefault("stocks", {})
+    user_stocks[code] = user_stocks.get(code, 0) + amount
+    
+    await ctx.send(f"✅ تم شراء **{amount}** سهم في **{stock['name']}** بسعر **${total_cost:,}**!")
+
+@bot.command(name="بيع_سهم")
+async def sell_stock(ctx, code: str = None, amount: int = None):
+    if not code or not amount or amount <= 0:
+        return await ctx.send("❌ الاستخدام الصحيح: `!بيع_سهم [رمز_السهم] [العدد]`\nمثال: `!بيع_سهم ARAMCO 2`")
+    
+    code = code.upper()
+    if code not in STOCKS:
+        return await ctx.send("❌ رمز السهم غير صحيح!")
+    
+    user_data = get_user_data(ctx.author.id)
+    user_stocks = user_data.get("stocks", {})
+    
+    if user_stocks.get(code, 0) < amount:
+        return await ctx.send(f"❌ لا تملك هذا العدد من الأسهم! عدد أسهمك المتاحة في {code}: **{user_stocks.get(code, 0)}**")
+    
+    update_stocks_market()
+    stock = STOCKS[code]
+    total_return = stock["price"] * amount
+    
+    user_stocks[code] -= amount
+    user_data["wallet"] += total_return
+    
+    await ctx.send(f"💰 تم بيع **{amount}** سهم في **{stock['name']}** بسعر اليوم واستلمت **${total_return:,}**!")
+
+@bot.command(name="اسهمي")
+async def my_stocks(ctx):
+    user_data = get_user_data(ctx.author.id)
+    user_stocks = user_data.get("stocks", {})
+    
+    active_stocks = {k: v for k, v in user_stocks.items() if v > 0}
+    if not active_stocks:
+        return await ctx.send("📊 لا تملك أي أسهم في محفظتك حالياً.")
+    
+    update_stocks_market()
+    msg = f"📊 **محفظة أسهم {ctx.author.display_name}:**\n\n"
+    total_value = 0
+    
+    for code, count in active_stocks.items():
+        stock_info = STOCKS[code]
+        current_val = stock_info["price"] * count
+        total_value += current_val
+        msg += f"• **{stock_info['name']} ({code})**: {count} سهم | القيمة الحالية: **${current_val:,}** ({stock_info['trend']})\n"
+    
+    msg += f"\n💵 **إجمالي قيمة محفظتك:** **${total_value:,}**"
+    await ctx.send(msg)
+
 
 # ==========================================
 ## ==========================================
@@ -788,4 +968,4 @@ TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("❌ لم يتم العثور على التوكين في متغيرات البيئة!")
+    print("❌ لم يتم العثور على التوكين في متغيرات البيئة!") 
