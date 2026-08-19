@@ -1,40 +1,30 @@
 import os
+import random
+import asyncio
 import threading
-import discord
 from typing import Optional
+from datetime import datetime, timedelta
+
+import discord
 from discord.ext import commands
+from discord import app_commands
+
 from flask import Flask
 
-# ================================
-# 1. كود إبقاء البوت شغال على Render (Flask)
-# ================================
-app = Flask(__name__)
+# ==========================================
+# 1. إعداد خادم Web Service لمنع نوم Render
+# ==========================================
+app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is alive!"
+    return "البوت يعمل بنجاح على الاستضافة السحابية!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
-# تشغيل الفلاسك في الخلفية
+# تشغيل الخادم في الخلفية
 threading.Thread(target=run_flask).start()
-
-
-# ================================
-# 2. إعدادات وأوامر البوت الخاصة بك
-# ================================
-intents = discord.Intents.default()
-intents.message_content = True  # تأكد من تفعيل الصلاحيات
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-@bot.event
-async def on_ready():
-    print(f"✅ تم تشغيل البوت بنجاح باسم: {bot.user}")
-
-# --- هنا تضع بقية أوامر وإمبيدات البوت الخاصة بك ---
-
 
 # ==========================================
 # 2. إعدادات البوت والـ Intents
@@ -46,12 +36,10 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ==========================================
-# 3. قاعدة البيانات المؤقتة (في الذاكرة)
+# 3. قاعدة البيانات المؤقتة
 # ==========================================
-# بيانات المستخدمين
 users_data = {}
 
-# قائمة المهن المتاحة وترقياتها
 JOBS = {
     "مبتدئ": {"salary": 200, "next_job": "موظف", "req_exp": 5},
     "موظف": {"salary": 500, "next_job": "مشرف", "req_exp": 15},
@@ -60,7 +48,6 @@ JOBS = {
     "رئيس شركة": {"salary": 7000, "next_job": None, "req_exp": 999999}
 }
 
-# قائمة السيارات للعرض والشراء
 CARS = {
     "كامري": 15000,
     "مرسيدس": 50000,
@@ -68,7 +55,6 @@ CARS = {
     "لامبورغيني": 250000
 }
 
-# قائمة العقارات
 HOUSES = {
     "شقة سكنية": 30000,
     "فيلا مدرجة": 100000,
@@ -76,7 +62,6 @@ HOUSES = {
 }
 
 def get_user_data(user_id: int):
-    """جلب أو إنشاء بيانات المستخدم التلقائية"""
     if user_id not in users_data:
         users_data[user_id] = {
             "wallet": 1000,
@@ -99,7 +84,6 @@ def get_user_data(user_id: int):
 # ==========================================
 
 class ShopDropdown(discord.ui.Select):
-    """قائمة منسدلة لشراء السيارات والممتلكات"""
     def __init__(self):
         options = [
             discord.SelectOption(label="كامري", description="السعر: $15,000", emoji="🚗"),
@@ -125,7 +109,6 @@ class ShopDropdown(discord.ui.Select):
 
 
 class ProfileView(discord.ui.View):
-    """أزرار تفاعلية لعرض الملف الشخصي وشراء التأمين"""
     def __init__(self, user: discord.Member):
         super().__init__(timeout=60)
         self.user = user
@@ -178,11 +161,10 @@ async def on_command_error(ctx, error):
 # ==========================================
 
 @bot.command(name="عمل", aliases=["work"])
-@commands.cooldown(1, 3600, commands.BucketType.user)  # مرة كل ساعة
+@commands.cooldown(1, 3600, commands.BucketType.user)
 async def work_cmd(ctx):
     data = get_user_data(ctx.author.id)
 
-    # التحقق من السجن
     if data["in_jail"]:
         if datetime.now() < data["jail_release_time"]:
             remaining = int((data["jail_release_time"] - datetime.now()).total_seconds() // 60)
@@ -198,7 +180,6 @@ async def work_cmd(ctx):
 
     msg = f"💼 عملت بوظيفتك كـ **{data['job']}** وحصلت على راتب قدره **${salary:,}**!"
 
-    # التحقق من الترقيات
     next_job = job_info["next_job"]
     if next_job and data["job_exp"] >= job_info["req_exp"]:
         data["job"] = next_job
@@ -230,7 +211,7 @@ async def my_job(ctx):
 # ==========================================
 
 @bot.command(name="سرقة", aliases=["rob"])
-@commands.cooldown(1, 1800, commands.BucketType.user)  # كولدون 30 دقيقة
+@commands.cooldown(1, 1800, commands.BucketType.user)
 async def rob_cmd(ctx, target: discord.Member = None):
     if not target or target.id == ctx.author.id:
         await ctx.send("❌ يرجى تحديد الشخص الذي تريد سرقته! مثال: `!سرقة @عضو`")
@@ -239,7 +220,6 @@ async def rob_cmd(ctx, target: discord.Member = None):
     thief_data = get_user_data(ctx.author.id)
     victim_data = get_user_data(target.id)
 
-    # التحقق مما إذا كان السارق مسجوناً
     if thief_data["in_jail"]:
         if datetime.now() < thief_data["jail_release_time"]:
             remaining = int((thief_data["jail_release_time"] - datetime.now()).total_seconds() // 60)
@@ -248,18 +228,15 @@ async def rob_cmd(ctx, target: discord.Member = None):
         else:
             thief_data["in_jail"] = False
 
-    # التحقق من رصيد الضحية
     if victim_data["wallet"] < 500:
         await ctx.send("❌ الضحية مفلس تماماً ولا يمتلك كاش كافٍ للسرقة!")
         return
 
-    # التحقق من وجود تأمين لدى الضحية
     if victim_data["has_insurance"] and victim_data["insurance_expiry"] and datetime.now() < victim_data["insurance_expiry"]:
         stolen = random.randint(200, min(1000, victim_data["wallet"]))
         thief_data["in_jail"] = True
         thief_data["jail_release_time"] = datetime.now() + timedelta(minutes=10)
 
-        # التأمين يعوض الضحية فوراً
         await ctx.send(
             f"🛡️ **فشلت الجريمة!** حاول {ctx.author.mention} سرقة {target.mention}، "
             f"ولكن الضحية يمتلك **تأميناً شاملاً**!\n"
@@ -267,7 +244,6 @@ async def rob_cmd(ctx, target: discord.Member = None):
         )
         return
 
-    # نسبة نجاح السرقة (40% نجاح - 60% فشل)
     success = random.random() < 0.40
 
     if success:
@@ -328,7 +304,6 @@ async def insurance_cmd(ctx):
 # ==========================================
 
 class MainStoreView(discord.ui.View):
-    """واجهة المتجر والمعرض الرئيسي بالأزرار والقوائم"""
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(ShopDropdown())
@@ -361,7 +336,6 @@ async def profile_cmd(ctx, member: discord.Member = None):
     target = member or ctx.author
     data = get_user_data(target.id)
 
-    # مراجعة حالة السجن والتأمين
     jail_status = "❌ غير مسجون"
     if data["in_jail"]:
         if data["jail_release_time"] and datetime.now() < data["jail_release_time"]:
@@ -459,7 +433,7 @@ async def withdraw_cmd(ctx, amount: str = None):
     await ctx.send(f"💵 تم سحب **${val:,}** من البنك إلى المحفظة.")
 
 # ==========================================
-# 10. الأوامر الإدارية الكاملة (Admin Commands)
+# 10. الأوامر الإدارية الكاملة
 # ==========================================
 
 @bot.command(name="اعطاء", aliases=["give"])
@@ -507,23 +481,19 @@ async def admin_unjail(ctx, member: discord.Member = None):
     data["in_jail"] = False
     data["jail_release_time"] = None
     await ctx.send(f"⚖️ تم إصدار عفو إداري والإفراج عن {member.mention} فوراً.")
-# ==========================================
-# أمر اليومية (!يومية)
-# ==========================================
-@bot.command(name="يومية", aliases=["daily"])
-@commands.cooldown(1, 86400, commands.BucketType.user) # مرة كل 24 ساعة (86400 ثانية)
-async def daily_cmd(ctx):
-    data = get_user_data(ctx.author.id)
-    
-    # مكافأة اليومية (مبلغ عشوائي بين 1000 و 2500)
-    reward = random.randint(1000, 2500)
-    data["wallet"] += reward
-    
-    await ctx.send(f"🎁 أهلاً {ctx.author.mention}! لقد حصلت على مكافأتك اليومية بقيمة **${reward:,}**!")
 
 # ==========================================
-# أمر المساعدة (!مساعدة)
+# 11. أمر اليومية والمساعدة
 # ==========================================
+
+@bot.command(name="يومية", aliases=["daily"])
+@commands.cooldown(1, 86400, commands.BucketType.user)
+async def daily_cmd(ctx):
+    data = get_user_data(ctx.author.id)
+    reward = random.randint(1000, 2500)
+    data["wallet"] += reward
+    await ctx.send(f"🎁 أهلاً {ctx.author.mention}! لقد حصلت على مكافأتك اليومية بقيمة **${reward:,}**!")
+
 @bot.command(name="مساعدة", aliases=["help"])
 async def help_cmd(ctx):
     embed = discord.Embed(
@@ -531,45 +501,34 @@ async def help_cmd(ctx):
         description="إليك جميع الأوامر المتاحة لاستخدامها في السيرفر:",
         color=discord.Color.gold()
     )
-    
     embed.add_field(
         name="💼 الأوامر العامة والعمل",
-        value="• `!عمل` - للعمل كسب المال والترقية في المهن\n"
-              "• `!مهنتي` - لعرض مستواك الوظيفي والراتب\n"
-              "• `!يومية` - لاستلام المكافأة اليومية كل 24 ساعة\n"
-              "• `!بروفايل` - لعرض بطاقتك الشخصية ورصيدك",
+        value="• `!عمل` - للعمل كسب المال والترقية\n• `!مهنتي` - لعرض مستواك الوظيفي\n• `!يومية` - لاستلام المكافأة اليومية\n• `!بروفايل` - لعرض بطاقتك الشخصية",
         inline=False
     )
-    
     embed.add_field(
         name="🛒 المتجر والتأمين",
-        value="• `!معرض` - لفتح المعرض التفاعلي والشراء بالأزرار\n"
-              "• `!تأمين` - لشراء تأمين ضد السرقات والحوادث",
+        value="• `!معرض` - لفتح المعرض الشامل\n• `!تأمين` - لشراء تأمين ضد السرقات",
         inline=False
     )
-    
     embed.add_field(
         name="⚖️ الجرائم والقضاء",
-        value="• `!سرقة @عضو` - لمحاولة سرقة عضو آخر\n"
-              "• `!كفالة` - لدفع كفالة الخروج من السجن",
+        value="• `!سرقة @عضو` - لمحاولة سرقة عضو\n• `!كفالة` - لدفع كفالة الخروج من السجن",
         inline=False
     )
-    
     embed.add_field(
         name="🏦 المعاملات المالية",
-        value="• `!تحويل @عضو المبلغ` - لتحويل كاش لعضو آخر\n"
-              "• `!ايداع المبلغ` - لإيداع الكاش في البنك\n"
-              "• `!سحب المبلغ` - لسحب المال من البنك",
+        value="• `!تحويل @عضو المبلغ` - لتحويل كاش\n• `!ايداع المبلغ` - لإيداع الكاش بالبنك\n• `!سحب المبلغ` - لسحب المال من البنك",
         inline=False
     )
-    
     await ctx.send(embed=embed)
 
 # ==========================================
-# 11. تشغيل البوت
+# 12. تشغيل البوت المضمون (في نهاية الملف)
 # ==========================================
 TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
+
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("❌ لم يتم العثور على التوكين في متغيرات البيئة!")
+    print("❌ خطأ: لم يتم العثور على التوكين في متغيرات البيئة!") 
