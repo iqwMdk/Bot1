@@ -1504,8 +1504,7 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         class TargetSelectView(View):
             @discord.ui.button(label="🏦 السطو على البنك المركزي", style=discord.ButtonStyle.primary)
             async def target_bank(self, inter: discord.Interaction, btn: Button):
-                session = HeistSession("bank", "البنك المركزي", "عصابتك", 500000)
-                await inter.response.send_message("🚨 **تم تجهيز خطة السطو على البنك المركزي!** اختر أعضاء السرقة للبدء:", view=HeistLobbyView(session))
+                await inter.response.send_message("🚨 بدأت عملية السطو على البنك المركزي!", ephemeral=True) 
 
             @discord.ui.button(label="💀 السطو على عصابة منافسة", style=discord.ButtonStyle.danger)
             async def target_gang(self, inter: discord.Interaction, btn: Button):
