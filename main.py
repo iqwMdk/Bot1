@@ -1210,99 +1210,132 @@ class RoleHackingView(discord.ui.View):
         embed.description = f"مرت 3 دقائق دون إكمال التهكير! فعلت الشرطة أجهزة الأمان وتضررت خزنتكم بخصم **${penalty:,}**."
         # يحتاج إرسال رسالة التايم أوت للمناهج المتاحة عبر الـ channel إذا لزم
 
-# === 3. واجهة التجمع وتوزيع الأدوار ===
-class HeistLobbyView(discord.ui.View):
-    def __init__(self, leader, attacker_gang, target_gang, target_balance):
-        super().__init__(timeout=120)
-        self.leader = leader
-        self.attacker_gang = attacker_gang
-        self.target_gang = target_gang
-        self.target_balance = target_balance
+#import random
+import discord
+
+# === لعبة المهندس (فك الشفرة) ===
+class HackerCodeView(discord.ui.View):
+    def __init__(self, hacker, parent_view):
+        super().__init__(timeout=180)
+        self.hacker = hacker
+        self.parent_view = parent_view
+        # توليد كود سري من 3 أرقام فريدة
+        self.secret_code = random.sample(range(1, 9), 3)
+        self.current_guess = []
+        self.attempts = 0
+
+    @discord.ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_1(self, inter: discord.Interaction, b: discord.ui.Button): await self.process_num(inter, 1)
+    @discord.ui.button(label="2", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_2(self, inter: discord.Interaction, b: discord.ui.Button): await self.process_num(inter, 2)
+    @discord.ui.button(label="3", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_3(self, inter: discord.Interaction, b: discord.ui.Button): await self.process_num(inter, 3)
+    @discord.ui.button(label="4", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_4(self, inter: discord.Interaction, b: discord.ui.Button): await self.process_num(inter, 4)
+    @discord.ui.button(label="5", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_5(self, inter: discord.Interaction, b: discord.ui.Button): await self.process_num(inter, 5)
+    @discord.ui.button(label="6", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_6(self, inter: discord.Interaction, b: discord.ui.Button): await self.process_num(inter, 6)
+
+    async def process_num(self, inter: discord.Interaction, num: int):
+        if inter.user != self.hacker:
+            return await inter.response.send_message("❌ هذه اللعبة للمهندس فقط!", ephemeral=True)
         
-        self.hacker = None
-        self.tech = None
-
-    @discord.ui.button(label="الانضمام كـ [مهندس 💻]", style=discord.ButtonStyle.secondary)
-    async def join_hacker(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.hacker:
-            return await interaction.response.send_message("❌ دور المهندس مأخوذ بالفعل!", ephemeral=True)
-        self.hacker = interaction.user
-        await interaction.response.send_message(f"✅ انضم {interaction.user.mention} كـ **مهندس** للعملية.")
-
-    @discord.ui.button(label="الانضمام كـ [فني 🔧]", style=discord.ButtonStyle.secondary)
-    async def join_tech(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.tech:
-            return await interaction.response.send_message("❌ دور الفني مأخوذ بالفعل!", ephemeral=True)
-        self.tech = interaction.user
-        await interaction.response.send_message(f"✅ انضم {interaction.user.mention} كـ **فني** للعملية.")
-
-    @discord.ui.button(label="انطلاق العملية 🚀", style=discord.ButtonStyle.success, row=1)
-    async def start_heist(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user != self.leader:
-            return await interaction.response.send_message("❌ القائد فقط من يستطيع بدء الهجوم!", ephemeral=True)
+        self.current_guess.append(num)
         
-        if not self.hacker or not self.tech:
-            return await interaction.response.send_message("❌ يجب اكتمال الطاقم (مهندس + فني) لبدء العملية!", ephemeral=True)
+        if len(self.current_guess) < 3:
+            return await inter.response.send_message(f"🔢 الإدخال الحالي: {self.current_guess}", ephemeral=True)
 
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(view=self)
-        self.stop()
+        # فحص المحاولة
+        self.attempts += 1
+        hints = []
+        for i in range(3):
+            if self.current_guess[i] == self.secret_code[i]:
+                hints.append("🟢 (صحيح وفي مكانه)")
+            elif self.current_guess[i] in self.secret_code:
+                hints.append("🟡 (موجود بغير مكانه)")
+            else:
+                hints.append("🔴 (خطأ)")
 
-        # فتح لوحة التهكير الخاصة بالأدوار والتوقيت (3 دقائق)
-        hack_view = RoleHackingView(self.hacker, self.tech, self.attacker_gang, self.target_gang, self.target_balance)
-        embed = discord.Embed(
-            title="⏱️ بدأت التغطية والتهكير! (معكم 3 دقائق)",
-            description=f"**المهندس:** {self.hacker.mention}\n**الفني:** {self.tech.mention}\n\nاضغطوا على أزراركم المخصصة أدناه لإكمال العملية قبل فوات الوقت!",
-            color=discord.Color.gold()
-        )
-        await interaction.followup.send(embed=embed, view=hack_view)
+        if self.current_guess == self.secret_code:
+            self.stop()
+            self.parent_view.hacker_done = True
+            await inter.response.send_message(f"🎉 **كفو!** تم كسر الشفرة بنجاح: `{self.secret_code}`!", ephemeral=False)
+            await self.parent_view.check_completion(inter)
+        else:
+            res = " | ".join(hints)
+            self.current_guess = []
+            await inter.response.send_message(f"❌ محاولة خاطئة!\nالتلميح: {res}\nحاول مجدداً!", ephemeral=True)
 
-# === 4. أمر البدء بالسرقة ===
-@bot.command(name="سرقة_عصابة")
-async def rob_gang(ctx, *, target_gang: str):
-    user_id = ctx.author.id
-    now = asyncio.get_event_loop().time()
+# === لعبة الفني (موازنة التردد) ===
+class TechBalanceView(discord.ui.View):
+    def __init__(self, tech, parent_view):
+        super().__init__(timeout=180)
+        self.tech = tech
+        self.parent_view = parent_view
+        self.target = 100
+        self.current_val = random.randint(20, 50)
 
-    # كول داون 15 دقيقة
-    if user_id in heist_cooldowns and now < heist_cooldowns[user_id]:
-        remaining = int(heist_cooldowns[user_id] - now)
-        return await ctx.send(f"⏳ يجب الانتظار **{remaining // 60} دقيقة** قبل التخطيط لسرقة جديدة.")
+    async def update_msg(self, inter: discord.Interaction):
+        if self.current_val == self.target:
+            self.stop()
+            self.parent_view.tech_done = True
+            await inter.response.send_message(f"⚡ **ممتاز!** تم موازنة التردد على {self.target}MHz وتعطيل الإنذار!", ephemeral=False)
+            await self.parent_view.check_completion(inter)
+        elif self.current_val > self.target:
+            self.current_val = random.randint(20, 50) # إعادة الضبط عند التجاوز
+            await inter.response.send_message("💥 تجاوزت التردد المطلوب! تم إعادة ضبط الجهاز، حاول موازنتها بالظبط.", ephemeral=True)
+        else:
+            await inter.response.send_message(f"⚙️ التردد الحالي: **{self.current_val}MHz** / الهدف: **100MHz**", ephemeral=True)
 
-    async with aiosqlite.connect("gangs.db") as db:
-        # فحص عصابة اللاعب وخزنتها
-        async with db.execute("SELECT g.name, g.balance FROM players p JOIN gangs g ON p.gang_name = g.name WHERE p.user_id = ?", (user_id,)) as cursor:
-            attacker_data = await cursor.fetchone()
-            if not attacker_data:
-                return await ctx.send("❌ أنت لست عضواً في أي عصابة!")
-            attacker_gang, attacker_balance = attacker_data
+    @discord.ui.button(label="+25 MHz", style=discord.ButtonStyle.primary)
+    async def add_25(self, inter: discord.Interaction, b: discord.ui.Button):
+        if inter.user != self.tech: return
+        self.current_val += 25
+        await self.update_msg(inter)
 
-        # شرط الـ 10,000 في الخزنة
-        if attacker_balance < 10000:
-            return await ctx.send(f"❌ يجب توفر **$10,000** على الأقل في خزنة عصابتكم (**{attacker_gang}**) للبدء.")
+    @discord.ui.button(label="+10 MHz", style=discord.ButtonStyle.primary)
+    async def add_10(self, inter: discord.Interaction, b: discord.ui.Button):
+        if inter.user != self.tech: return
+        self.current_val += 10
+        await self.update_msg(inter)
 
-        # فحص عصابة الهدف
-        async with db.execute("SELECT balance FROM gangs WHERE name = ?", (target_gang,)) as cursor:
-            target_data = await cursor.fetchone()
-            if not target_data:
-                return await ctx.send("❌ العصابة المستهدفة غير موجودة!")
-            target_balance = target_data[0]
+    @discord.ui.button(label="-5 MHz", style=discord.ButtonStyle.danger)
+    async def sub_5(self, inter: discord.Interaction, b: discord.ui.Button):
+        if inter.user != self.tech: return
+        self.current_val -= 5
+        await self.update_msg(inter)
 
-    heist_cooldowns[user_id] = now + 900 # 15 دقيقة كول داون
+# === واجهة التحكم الرئيسية للسطو ===
+class MainHackLobby(discord.ui.View):
+    def __init__(self, hacker, tech):
+        super().__init__(timeout=180)
+        self.hacker = hacker
+        self.tech = tech
+        self.hacker_done = False
+        self.tech_done = False
 
-    embed = discord.Embed(
-        title=f"⚔️ التخطيط لسرقة عصابة [{target_gang}]",
-        description=f"القائد: {ctx.author.mention}\nالعصابة: **{attacker_gang}**\n\n**الرجاء اختيار الأدوار ثم الضغط على انطلاق العملية.**",
-        color=discord.Color.dark_red()
-    )
-    view = HeistLobbyView(ctx.author, attacker_gang, target_gang, target_balance)
-    await ctx.send(embed=embed, view=view)
+    @discord.ui.button(label="💻 فتح واجهة التهكير (للمهندس)", style=discord.ButtonStyle.success)
+    async def open_hacker_game(self, inter: discord.Interaction, b: discord.ui.Button):
+        if inter.user != self.hacker:
+            return await inter.response.send_message("❌ هذه الواجهة للمهندس فقط!", ephemeral=True)
+        await inter.response.send_message("🔓 **خوض اختبار فك الشفرة:** خمن الرمز المكون من 3 أرقام!", view=HackerCodeView(self.hacker, self), ephemeral=True)
 
-@bot.event
-async def on_ready():
-    await init_db()
-    print("بوت الديسكورد جاهز للعمل بالكامل!")
+    @discord.ui.button(label="🔧 فتح واجهة الإنذار (الفني)", style=discord.ButtonStyle.danger)
+    async def open_tech_game(self, inter: discord.Interaction, b: discord.ui.Button):
+        if inter.user != self.tech:
+            return await inter.response.send_message("❌ هذه الواجهة للفني فقط!", ephemeral=True)
+        await inter.response.send_message("⚡ **موازنة نظام الإنذار:** وصل التردد إلى 100MHz بالظبط!", view=TechBalanceView(self.tech, self), ephemeral=True)
 
+    async def check_completion(self, inter: discord.Interaction):
+        if self.hacker_done and self.tech_done:
+            self.stop()
+            embed = discord.Embed(
+                title="🏆 تم اختراق البنك المركزي وسرقة الخزنة بنجاح!",
+                description="نجح المهندس والفني في حل الألغاز وتجاوز أنظمة الحماية بالكامل!",
+                color=discord.Color.green()
+            )
+          await inter.channel.send(embed=embed) 
 
 # ==========================================
 # 5. المكونات التفاعلية للقوائم (Selects)
