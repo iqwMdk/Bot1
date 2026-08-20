@@ -957,7 +957,8 @@ async def claim_contract(ctx):
     user_data["wallet"] += contract["amount"]
     amount = contract["amount"]
     user_data["contract"] = None
-    await ctx.send(f"🎉 انتهت مدة العقد بنجاح! تم تحويل **${amount:,}** إلى محفظتك") import asyncio
+    await ctx.send(f"🎉 انتهت مدة العقد بنجاح! تم تحويل **${amount:,}** إلى محفظتك")
+import asyncio
 import random
 import discord
 from discord.ui import View, Button
