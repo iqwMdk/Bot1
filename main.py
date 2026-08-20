@@ -1536,7 +1536,7 @@ class CompleteInteractiveDashboardView(discord.ui.View):
     @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
     async def btn_start_heist(self, interaction: discord.Interaction, button: discord.ui.Button):
             class TargetSelectView(View):
-        @discord.ui.button(label="🏦 السطو على البنك المركزي", style=discord.ButtonStyle.primary)
+                  @discord.ui.button(label="🏦 السطو على البنك المركزي", style=discord.ButtonStyle.primary)
         async def target_bank(self, inter: discord.Interaction, btn: Button):
             embed = discord.Embed(
                 title="⚔️ التجهيز للسطو على البنك المركزي",
