@@ -1327,15 +1327,16 @@ class MainHackLobby(discord.ui.View):
             return await inter.response.send_message("❌ هذه الواجهة للفني فقط!", ephemeral=True)
         await inter.response.send_message("⚡ **موازنة نظام الإنذار:** وصل التردد إلى 100MHz بالظبط!", view=TechBalanceView(self.tech, self), ephemeral=True)
 
-    async def check_completion(self, inter: discord.Interaction):
-        if self.hacker_done and self.tech_done:
+        async def check_completion(self, inter: discord.Interaction):
+          if self.hacker_done and self.tech_done:
             self.stop()
             embed = discord.Embed(
                 title="🏆 تم اختراق البنك المركزي وسرقة الخزنة بنجاح!",
                 description="نجح المهندس والفني في حل الألغاز وتجاوز أنظمة الحماية بالكامل!",
                 color=discord.Color.green()
             )
-          await inter.channel.send(embed=embed) 
+            await inter.channel.send(embed=embed)
+
 
 # ==========================================
 # 5. المكونات التفاعلية للقوائم (Selects)
