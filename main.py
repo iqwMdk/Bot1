@@ -977,17 +977,163 @@ import random
 import discord
 from discord.ui import View, Button
 
-## ==========================================
-# نظام السطو المطور مع التلميحات وقائمة العصابات
+#import os
+import random
+import asyncio
+import threading
+import time
+from typing import Optional
+from datetime import datetime, timedelta
+
+import discord
+from discord.ext import commands
+from discord.ui import View, Button
+from flask import Flask
+
 # ==========================================
+# 1. خادم Web Service لضمان الاستقرار على Render
+# ==========================================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running online 24/7!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+threading.Thread(target=run_flask, daemon=True).start()
+
+# ==========================================
+# 2. إعدادات البوت والـ Intents
+# ==========================================
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+bot.remove_command("help")
+
+# ==========================================
+# 3. قواعد البيانات والأسواق
+# ==========================================
+users_data = {}
+gangs_data = {
+    "عصابة الفرسان": {"owner": 12345678, "members": [12345678], "bank": 250000},
+    "عصابة الصقور": {"owner": 87654321, "members": [87654321], "bank": 500000}
+}
+lottery_tickets = []
+current_auction = {"active": False, "item": None, "price": 0, "highest_bidder": None}
+
+WEAPONS_MARKET = {
+    "1": {"name": "سكين", "price": 10000, "bonus": 0.03},
+    "2": {"name": "مسدس", "price": 35000, "bonus": 0.07},
+    "3": {"name": "رشاش", "price": 80000, "bonus": 0.12},
+    "4": {"name": "قناص", "price": 150000, "bonus": 0.20}
+}
+
+real_estate_market = {
+    "1": {"name": "محل تجاري", "price": 50000, "income": 1500},
+    "2": {"name": "مبنى مكاتب", "price": 150000, "income": 5000},
+    "3": {"name": "شركة استثمارية", "price": 500000, "income": 20000}
+}
+
+GANG_CONTRACTS = {
+    "1": {"name": "عقد تهريب بضائع", "reward": 15000, "cost": 3000},
+    "2": {"name": "عقد حماية منشآت", "reward": 35000, "cost": 7000},
+    "3": {"name": "عقد توريد بالسوق الأسود", "reward": 80000, "cost": 15000}
+}
+
+BLACK_MARKET = {
+    "1": {"name": "درع حماية (حصانة 24h)", "price": 10000, "type": "immunity"},
+    "2": {"name": "سلاح سرقات خفيف (+10% نجاح)", "price": 25000, "type": "weapon"},
+    "3": {"name": "حقيبة غسيل أموال سريعة", "price": 15000, "type": "wash_kit"}
+}
+
+STOCKS = {
+    "ARAMCO": {"name": "أرامكو", "price": 100, "change": 2.5, "trend": "📈"},
+    "STC": {"name": "الاتصالات", "price": 50, "change": -1.2, "trend": "📉"},
+    "RAJHI": {"name": "الراجحي", "price": 80, "change": 4.1, "trend": "📈"}
+}
+
+ROBBERIES = {
+    "1": {"name": "متجر صغير", "reward": 5000, "risk": 0.2},
+    "2": {"name": "بنك محلي", "reward": 25000, "risk": 0.5},
+    "3": {"name": "البنك المركزي", "reward": 100000, "risk": 0.8}
+}
+
+JOB_RANKS = [
+    {"name": "🔰 متدرب", "min_work": 0, "min_salary": 1000, "max_salary": 3000},
+    {"name": "💼 موظف", "min_work": 5, "min_salary": 3000, "max_salary": 5000},
+    {"name": "👔 مشرف", "min_work": 20, "min_salary": 5000, "max_salary": 7500},
+    {"name": "👑 مدير", "min_work": 30, "min_salary": 8000, "max_salary": 12000}
+]
+
+def update_stocks_market():
+    for code, info in STOCKS.items():
+        change_pct = round(random.uniform(-5.0, 5.0), 2)
+        multiplier = 1 + (change_pct / 100)
+        info["price"] = max(10, int(info["price"] * multiplier))
+        info["change"] = change_pct
+        info["trend"] = "📈" if change_pct >= 0 else "📉"
+
+def get_user_data(user_id: int):
+    if user_id not in users_data:
+        users_data[user_id] = {
+            "wallet": 1000, "bank": 0, "real_estates": [], "cars": [],
+            "gang": None, "gang_invite": None, "immunity_until": None,
+            "stocks": {}, "dirty_money": 0, "inventory": [], "contract": None,
+            "last_profit_collect": 0, "work_count": 0, "work_cooldown": 0
+        }
+    return users_data[user_id]
+
+def get_user_rank(work_count):
+    current_rank = JOB_RANKS[0]
+    next_rank = None
+    for i, rank in enumerate(JOB_RANKS):
+        if work_count >= rank["min_work"]:
+            current_rank = rank
+            if i + 1 < len(JOB_RANKS): next_rank = JOB_RANKS[i + 1]
+        else: break
+    return current_rank, next_rank
+
+async def update_user_role(member: discord.Member, work_count):
+    role_mapping = {"🔰 متدرب": "🔰 متدرب", "💼 موظف": "💼 موظف", "👔 مشرف": "👔 مشرف", "👑 مدير": "👑 مدير"}
+    current_rank, _ = get_user_rank(work_count)
+    role_name = role_mapping.get(current_rank["name"])
+    role = discord.utils.get(member.guild.roles, name=role_name)
+    if role:
+        all_job_roles = [discord.utils.get(member.guild.roles, name=n) for n in role_mapping.values()]
+        await member.remove_roles(*[r for r in all_job_roles if r and r in member.roles])
+        if role not in member.roles:
+            await member.add_roles(role)
+
+# ==========================================
+# 4. كلاسات نظام السطو التفاعلي المطور
+# ==========================================
+
+class HeistSession:
+    def __init__(self, target_type, target_name, attacker_gang, loot_amount):
+        self.target_type = target_type
+        self.target_name = target_name
+        self.attacker_gang = attacker_gang
+        self.loot_amount = loot_amount
+        self.roles = {"hacker": None, "breacher": None, "cover": None}
+        self.progress = {"hacker": False, "breacher": False, "cover": False}
+        self.retries = {"hacker": 1, "breacher": 1, "cover": 1}
+        self.is_active = False
 
 class GangSelectView(View):
     def __init__(self):
         super().__init__(timeout=60)
-        # إنشاء قائمة منسدلة بالعصابات المسجلة
         options = []
-        for g_name in GANGS_DATA.keys():
-            options.append(discord.SelectOption(label=g_name, description=f"خزنة العصابة: {GANGS_DATA[g_name].get('vault', 0)}$"))
+        for g_name, g_data in gangs_data.items():
+            vault_amount = g_data.get('bank', 0)
+            options.append(discord.SelectOption(
+                label=g_name, 
+                description=f"خزنة العصابة: ${vault_amount:,}",
+                value=g_name
+            ))
         
         if not options:
             options.append(discord.SelectOption(label="لا توجد عصابات مسجلة حالياً", value="none"))
@@ -1001,65 +1147,490 @@ class GangSelectView(View):
         if target_gang == "none":
             return await interaction.response.send_message("❌ لا توجد عصابات منافسة للسطو عليها حالياً!", ephemeral=True)
         
-        session = HeistSession("gang", target_gang, "عصابتك")
-        await interaction.response.send_message(f"🚨 **تم تجهيز خطة السطو على خزنة عصابة ({target_gang})!** اختر دورك الآن:", view=HeistLobbyView(session))
+        target_vault = gangs_data[target_gang].get('bank', 0)
+        if target_vault <= 0:
+            return await interaction.response.send_message(f"❌ خزنة عصابة ({target_gang}) فارغة تماماً!", ephemeral=True)
 
-# تحدي المهكر مع التلميح الذكي
+        stolen_amount = int(target_vault * 0.40) # سرقة 40% من الخزنة
+        session = HeistSession("gang", target_gang, "عصابتك", stolen_amount)
+        
+        embed = discord.Embed(
+            title="🚨 التجهيز للسطو المسلح",
+            description=f"**الهدف:** عصابة `{target_gang}`\n**الخزنة المستهدفة:** `${target_vault:,}`\n**الغنائم المتوقعة:** `${stolen_amount:,}`\n\nقم باختيار الأعضاء للأدوار التالية للانطلاق:",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, view=HeistLobbyView(session))
+
 class HackerView(View):
     def __init__(self, session):
-        super().__init__(timeout=180)
+        super().__init__(timeout=60)
         self.session = session
-        # اختيار لون وتوليد تلميح له
-        colors = {"أحمر": "🔴 لون الدم/النار", "أزرق": "🔵 لون السماء/البحر", "أخضر": "🟢 لون الشجر/الطبيعة"}
-        self.correct_color = random.choice(list(colors.keys()))
-        self.hint = colors[self.correct_color]
+        self.correct_sequence = random.sample([1, 2, 3, 4], 4)
+        self.user_sequence = []
+        self.is_showing_pattern = True
 
-    @discord.ui.button(label="قطع السلك الأحمر 🔴", style=discord.ButtonStyle.danger)
-    async def wire_red(self, interaction: discord.Interaction, button: Button):
-        await self.check_wire(interaction, "أحمر")
+    async def start_challenge(self, interaction: discord.Interaction):
+        pattern_str = " ➔ ".join([f"[{n}]" for n in self.correct_sequence])
+        embed = discord.Embed(
+            title="💻 جاري تهكير نظام أمان الخزنة...",
+            description=f"⚠️ **احفظ تسلسل الكود سريعاً! سيختفي بعد 3 ثوانٍ:**\n\n# `{pattern_str}`",
+            color=discord.Color.gold()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await asyncio.sleep(3)
+        
+        self.is_showing_pattern = False
+        embed_hide = discord.Embed(
+            title="🔒 أدخل كود الأمان الآن من ذاكرتك:",
+            description="اضغط على الأزرار بالترتيب الصحيح الذي ظهر لك!",
+            color=discord.Color.blue()
+        )
+        await interaction.followup.send(embed=embed_hide, view=self, ephemeral=True)
 
-    @discord.ui.button(label="قطع السلك الأزرق 🔵", style=discord.ButtonStyle.primary)
-    async def wire_blue(self, interaction: discord.Interaction, button: Button):
-        await self.check_wire(interaction, "أزرق")
+    @discord.ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_1(self, interaction: discord.Interaction, button: Button):
+        await self.process_input(interaction, 1)
 
-    @discord.ui.button(label="قطع السلك الأخضر 🟢", style=discord.ButtonStyle.success)
-    async def wire_green(self, interaction: discord.Interaction, button: Button):
-        await self.check_wire(interaction, "أخضر")
+    @discord.ui.button(label="2", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_2(self, interaction: discord.Interaction, button: Button):
+        await self.process_input(interaction, 2)
 
-    async def check_wire(self, interaction, color):
-        if color == self.correct_color:
+    @discord.ui.button(label="3", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_3(self, interaction: discord.Interaction, button: Button):
+        await self.process_input(interaction, 3)
+
+    @discord.ui.button(label="4", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_4(self, interaction: discord.Interaction, button: Button):
+        await self.process_input(interaction, 4)
+
+    async def process_input(self, interaction: discord.Interaction, num: int):
+        if self.is_showing_pattern:
+            return await interaction.response.send_message("انتظر انتهاء عرض الكود!", ephemeral=True)
+
+        self.user_sequence.append(num)
+        idx = len(self.user_sequence) - 1
+
+        if self.user_sequence[idx] != self.correct_sequence[idx]:
+            for child in self.children: child.disabled = True
+            await interaction.response.edit_message(content="💥 **كود خاطئ! انطلق إنذار الأمان وفشلت عملية التهكير!**", view=self)
+            self.stop()
+            return
+
+        if len(self.user_sequence) == 4:
             self.session.progress["hacker"] = True
-            await interaction.response.send_message("✅ تم فك التشفير وتعطيل نظام حماية الخزنة بنجاح!", ephemeral=True)
+            for child in self.children: child.disabled = True
+            await interaction.response.edit_message(content="✅ **تم إدخال الكود بنجاح وتعطيل جدار الحماية الرئيسي!**", view=self)
             self.stop()
         else:
-            if self.session.retries["hacker"] > 0:
-                self.session.retries["hacker"] -= 1
-                await interaction.response.send_message("⚠️ خيار خاطئ! انتبه للتلميح، لديك **محاولة أخيرة**!", ephemeral=True)
+            await interaction.response.send_message(f"🔹 تم إدخال الرقم `{num}` بنجاح.. أكمل بقية الكود!", ephemeral=True)
+
+class HeistLobbyView(View):
+    def __init__(self, session: HeistSession):
+        super().__init__(timeout=180)
+        self.session = session
+
+    @discord.ui.button(label="👨‍💻 المُهكّر (Hacker)", style=discord.ButtonStyle.primary, row=0)
+    async def select_hacker(self, interaction: discord.Interaction, button: Button):
+        if self.session.roles["hacker"]: return await interaction.response.send_message("❌ هذا الدور متخذ بالفعل!", ephemeral=True)
+        self.session.roles["hacker"] = interaction.user
+        button.disabled = True
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(f"✅ انضم **{interaction.user.display_name}** بدور **المُهكّر**!", ephemeral=True)
+
+    @discord.ui.button(label="💣 المُفجّر (Breacher)", style=discord.ButtonStyle.danger, row=0)
+    async def select_breacher(self, interaction: discord.Interaction, button: Button):
+        if self.session.roles["breacher"]: return await interaction.response.send_message("❌ هذا الدور متخذ بالفعل!", ephemeral=True)
+        self.session.roles["breacher"] = interaction.user
+        button.disabled = True
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(f"✅ انضم **{interaction.user.display_name}** بدور **المُفجّر**!", ephemeral=True)
+
+    @discord.ui.button(label="🛡️ الحارس (Cover)", style=discord.ButtonStyle.secondary, row=0)
+    async def select_cover(self, interaction: discord.Interaction, button: Button):
+        if self.session.roles["cover"]: return await interaction.response.send_message("❌ هذا الدور متخذ بالفعل!", ephemeral=True)
+        self.session.roles["cover"] = interaction.user
+        button.disabled = True
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(f"✅ انضم **{interaction.user.display_name}** بدور **الحارس**!", ephemeral=True)
+
+    @discord.ui.button(label="🚀 انطلاق العملية", style=discord.ButtonStyle.green, row=1)
+    async def start_heist(self, interaction: discord.Interaction, button: Button):
+        if not all(self.session.roles.values()):
+            return await interaction.response.send_message("⚠️ يجب اختيار أعضاء السرقة وتعبئة جميع الأدوار الـ 3 قبل الانطلاق!", ephemeral=True)
+        
+        self.session.is_active = True
+        for child in self.children: child.disabled = True
+        
+        await interaction.response.edit_message(content="🔥 **بدأت عملية السطو! جاري بدء اختبار التهكير...**", view=self)
+        
+        # بدء اختار المهكر المطور
+        hacker_view = HackerView(self.session)
+        await hacker_view.start_challenge(interaction)
+        await hacker_view.wait()
+
+        # نتيجة السطو وتوزيع الأموال
+        if self.session.progress["hacker"]:
+            loot = self.session.loot_amount
+            per_member_share = int(loot * 0.25)
+            
+            # خصم الفلوس من العصابة المستهدفة
+            if self.session.target_type == "gang" and self.session.target_name in gangs_data:
+                gangs_data[self.session.target_name]["bank"] -= loot
+
+            # توزيع الغنائم على الفريق
+            for role_user in self.session.roles.values():
+                u_data = get_user_data(role_user.id)
+                u_data["wallet"] += per_member_share
+
+            embed_success = discord.Embed(
+                title="🎉 نجحت عملية السطو المسلح!",
+                description=f"💰 **إجمالي المسروقات:** `${loot:,}`\n💵 **حصة كل عضو بالفريق (3 أعضاء):** `${per_member_share:,}`\n\nتم إيداع المبالغ في محافظم المباشرة!",
+                color=discord.Color.green()
+            )
+            await interaction.followup.send(embed=embed_success)
+        else:
+            embed_fail = discord.Embed(
+                title="💥 فشلت عملية السطو!",
+                description="تم إطلاق صفارات الإنذار وحاصركم الأمن! هرب الفريق بدون أرباح.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed_fail)
+
+# ==========================================
+# 5. المكونات التفاعلية للقوائم (Selects)
+# ==========================================
+
+class WeaponsShopSelect(discord.ui.Select):
+    def __init__(self):
+        options = [discord.SelectOption(label=item['name'], value=key, description=f"السعر: ${item['price']:,} | +{int(item['bonus']*100)}%") for key, item in WEAPONS_MARKET.items()]
+        super().__init__(placeholder="اختر سلاحاً لشراؤه...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected = self.values[0]
+        weapon = WEAPONS_MARKET[selected]
+        user_data = get_user_data(interaction.user.id)
+        if weapon["name"] in user_data.get("inventory", []):
+            return await interaction.response.send_message("❌ أنت تملك هذا السلاح مسبقاً!", ephemeral=True)
+        if user_data["wallet"] < weapon["price"]:
+            return await interaction.response.send_message("❌ لا تملك كاش كافي!", ephemeral=True)
+        user_data["wallet"] -= weapon["price"]
+        user_data.setdefault("inventory", []).append(weapon["name"])
+        await interaction.response.send_message(f"🔫 تم شراء **{weapon['name']}** بنجاح!", ephemeral=True)
+
+class RealEstateSelect(discord.ui.Select):
+    def __init__(self):
+        options = [discord.SelectOption(label=item['name'], value=key, description=f"السعر: ${item['price']:,} | الدخل: ${item['income']:,}") for key, item in real_estate_market.items()]
+        super().__init__(placeholder="اختر عقاراً لشراؤه...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected = self.values[0]
+        estate = real_estate_market[selected]
+        data = get_user_data(interaction.user.id)
+        if data["wallet"] < estate["price"]:
+            return await interaction.response.send_message(f"❌ لا تملك المبلغ الكافي لشراء {estate['name']}!", ephemeral=True)
+        data["wallet"] -= estate["price"]
+        data["real_estates"].append(estate["name"])
+        await interaction.response.send_message(f"🎉 تم شراء **{estate['name']}** بنجاح!", ephemeral=True)
+
+class RobberySelect(discord.ui.Select):
+    def __init__(self):
+        options = [discord.SelectOption(label=item['name'], value=key, description=f"المكافأة: ${item['reward']:,} | الخطر: {int(item['risk']*100)}%") for key, item in ROBBERIES.items()]
+        super().__init__(placeholder="اختر هدف السرقة...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        data = get_user_data(interaction.user.id)
+        if not data["gang"]:
+            return await interaction.response.send_message("❌ ينبغي أن تكون عضواً في عصابة لبدء السرقة!", ephemeral=True)
+        selected = self.values[0]
+        rob = ROBBERIES[selected]
+        gang_name = data["gang"]
+        members_count = len(gangs_data[gang_name]["members"])
+        gang_bonus = (members_count - 1) * 0.03
+        weapon_bonus = max([w_info["bonus"] for w in data.get("inventory", []) for w_id, w_info in WEAPONS_MARKET.items() if w_info["name"] == w] or [0])
+        effective_risk = max(0.05, rob["risk"] - gang_bonus - weapon_bonus)
+
+        if random.random() > effective_risk:
+            gangs_data[gang_name]["bank"] += rob["reward"]
+            await interaction.response.send_message(f"🔥 **نجحت السرقة!** تمت إضافة **${rob['reward']:,}** إلى خزينة العصابة.", ephemeral=True)
+        else:
+            await interaction.response.send_message("🚨 **فشلت السرقة!** حاصرتكم الشرطة وهربتم بصعوبة بدون أرباح.", ephemeral=True)
+
+class ContractSelect(discord.ui.Select):
+    def __init__(self):
+        options = [discord.SelectOption(label=item['name'], value=key, description=f"التكلفة: ${item['cost']:,} | الربح: ${item['reward']:,}") for key, item in GANG_CONTRACTS.items()]
+        super().__init__(placeholder="اختر عقداً لتنفيذه...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        data = get_user_data(interaction.user.id)
+        if not data["gang"]: return await interaction.response.send_message("❌ يجب أن تكون في عصابة لتنفيذ العقود!", ephemeral=True)
+        selected = self.values[0]
+        c = GANG_CONTRACTS[selected]
+        if data["wallet"] < c["cost"]: return await interaction.response.send_message(f"❌ لا تملك تكلفة العقد (${c['cost']:,})!", ephemeral=True)
+        data["wallet"] -= c["cost"]
+        gangs_data[data["gang"]]["bank"] += c["reward"]
+        await interaction.response.send_message(f"📜 تم تنفيذ **{c['name']}** ونزول **${c['reward']:,}** في خزينة العصابة!", ephemeral=True)
+
+class BlackMarketSelect(discord.ui.Select):
+    def __init__(self):
+        options = [discord.SelectOption(label=item['name'], value=key, description=f"السعر: ${item['price']:,}") for key, item in BLACK_MARKET.items()]
+        super().__init__(placeholder="اختر عنصرًا من السوق الأسود...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected = self.values[0]
+        item = BLACK_MARKET[selected]
+        data = get_user_data(interaction.user.id)
+        if data["wallet"] < item["price"]: return await interaction.response.send_message("❌ لا تملك المال الكافي!", ephemeral=True)
+        data["wallet"] -= item["price"]
+        if item["type"] == "immunity":
+            data["immunity_until"] = datetime.now() + timedelta(days=1)
+            await interaction.response.send_message("🛡️ تم تفعيل الحصانة الكاملة لمدة 24 ساعة!", ephemeral=True)
+        elif item["type"] == "wash_kit":
+            if data["dirty_money"] > 0:
+                data["wallet"] += data["dirty_money"]
+                data["dirty_money"] = 0
+                await interaction.response.send_message("🧼 تم غسيل جميع أموالك المشبوهة بنسبة 100%!", ephemeral=True)
             else:
-                await interaction.response.send_message("💥 خطأ ثاني! انفجر نظام الحماية وفشلت العملية!", ephemeral=True)
-                self.stop()
+                await interaction.response.send_message("❌ ليس لديك أموال غير مغسولة حالياً.", ephemeral=True)
 
 # ==========================================
-# 4. زر بدء السطو المضاف للوحة الرئيسية
+# 6. لوحة التحكم التفاعلية العامة (الداشبورد)
 # ==========================================
-# يمكنك إضافة هذا الزر داخل كلاس CompleteInteractiveDashboardView
-"""
-@discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
-async def btn_start_heist(self, interaction: discord.Interaction, button: discord.ui.Button):
-    # قائمة اختيار الهدف (بنك أو عصابة)
-    class TargetSelectView(View):
-        @discord.ui.button(label="🏦 السطو على بنك المدينة (البوت)", style=discord.ButtonStyle.primary)
-        async def target_bank(self, inter: discord.Interaction, btn: Button):
-            session = HeistSession("bank", "بنك المدينة المركزي", "عصابتك")
-            await inter.response.send_message("🚨 **تم تجهيز خطة السطو على البنك!** ليقم باقي الأعضاء باختيار أدوارهم خلال 3 دقائق:", view=HeistLobbyView(session))
 
-        @discord.ui.button(label="💀 السطو على عصابة منافسة", style=discord.ButtonStyle.danger)
-        async def target_gang(self, inter: discord.Interaction, btn: Button):
-            session = HeistSession("gang", "خزنة العصابة المنافسة", "عصابتك")
-            await inter.response.send_message("🚨 **تم تجهيز خطة السطو على العصابة!** ليقم باقي الأعضاء باختيار أدوارهم خلال 3 دقائق:", view=HeistLobbyView(session))
+class CompleteInteractiveDashboardView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
-    await interaction.response.send_message("🎯 **اختر هدف عملية السطو:**", view=TargetSelectView(), ephemeral=True)
-"""
+    @discord.ui.button(label="🏢 سوق العقارات والشركات", style=discord.ButtonStyle.success, row=0)
+    async def btn_real_estate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = View(); view.add_item(RealEstateSelect())
+        await interaction.response.send_message("🏬 **اختر العقار الذي ترغب بشراؤه مباشرة:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="💳 رصيدي وحسابي", style=discord.ButtonStyle.primary, row=0)
+    async def btn_balance(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = get_user_data(interaction.user.id)
+        msg = f"👤 **بيانات {interaction.user.display_name}:**\n💵 المحفظة الكاش: **${data['wallet']:,}**\n🏦 البنك: **${data['bank']:,}**\n🧼 أموال مشبوهة: **${data['dirty_money']:,}**"
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    @discord.ui.button(label="💰 جمع الأرباح (3h)", style=discord.ButtonStyle.success, row=0)
+    async def btn_collect_profit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = get_user_data(interaction.user.id)
+        if not data["real_estates"]: return await interaction.response.send_message("❌ لا تملك عقارات أو شركات حالياً!", ephemeral=True)
+        last_collect = data.get("last_profit_collect", 0)
+        now = time.time()
+        cooldown = 10800
+        if now - last_collect < cooldown:
+            remaining = int(cooldown - (now - last_collect))
+            return await interaction.response.send_message(f"⏳ **استلمت أرباحك مسبقاً!** متبقي: **{remaining // 3600} ساعة و {(remaining % 3600) // 60} دقيقة**.", ephemeral=True)
+        total = sum([item["income"] for name in data["real_estates"] for item in real_estate_market.values() if item["name"] == name])
+        data["wallet"] += total
+        data["last_profit_collect"] = now
+        await interaction.response.send_message(f"💰 تم استلام أرباحك اليومية بقيمة **${total:,}**!", ephemeral=True)
+
+    @discord.ui.button(label="🔫 متجر الأسلحة", style=discord.ButtonStyle.danger, row=1)
+    async def btn_weapons_shop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = View(); view.add_item(WeaponsShopSelect())
+        await interaction.response.send_message("🔫 **اختر السلاح المراد شراؤه لزيادة نسبة نجاح السرقات:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="🎒 حقيبتي", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_my_inv(self, interaction: discord.Interaction, button: discord.ui.Button):
+        inv = get_user_data(interaction.user.id).get("inventory", [])
+        if not inv: return await interaction.response.send_message("🎒 حقيبتك فارغة حالياً.", ephemeral=True)
+        await interaction.response.send_message(f"🎒 **محتويات حقيبتك الشخصية:**\n" + "\n".join([f"🔸 {w}" for w in inv]), ephemeral=True)
+
+    @discord.ui.button(label="📈 سوق الأسهم", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_stocks(self, interaction: discord.Interaction, button: discord.ui.Button):
+        update_stocks_market()
+        embed = discord.Embed(title="📈 مؤشرات وسوق الأسهم المحلية", color=discord.Color.green())
+        for code, info in STOCKS.items():
+            sign = "+" if info["change"] >= 0 else ""
+            embed.add_field(name=f"{info['trend']} {info['name']} ({code})", value=f"السعر: **${info['price']}**\nالتغير: **{sign}{info['change']}%**", inline=True)
+        embed.set_footer(text="الشراء والبيع عبر الأوامر النصية: !شراء_سهم | !بيع_سهم | !اسهمي")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="💼 ابدأ العمل", style=discord.ButtonStyle.green, row=2)
+    async def btn_do_work(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_data = get_user_data(interaction.user.id)
+        current_time = time.time()
+        cooldowns = user_data.setdefault("work_cooldown", 0)
+        if current_time < cooldowns:
+            remaining = int(cooldowns - current_time)
+            return await interaction.response.send_message(f"⏳ يجب الانتظار **{remaining // 3600} ساعة و {(remaining % 3600) // 60} دقيقة**.", ephemeral=True)
+        user_data["work_cooldown"] = current_time + 3600
+        work_count = user_data.get("work_count", 0) + 1
+        user_data["work_count"] = work_count
+        try: await update_user_role(interaction.user, work_count)
+        except Exception as e: print(f"خطأ رول: {e}")
+        current_rank, _ = get_user_rank(work_count)
+        salary = random.randint(current_rank["min_salary"], current_rank["max_salary"])
+        user_data["wallet"] += salary
+        embed = discord.Embed(title="💼 لوحة العمل الوظيفي", color=discord.Color.blue())
+        embed.add_field(name="الرتبة", value=current_rank["name"], inline=True)
+        embed.add_field(name="الراتب المستلم", value=f"**${salary:,}** 💵", inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🏴‍☠️ عصابتي والشركات", style=discord.ButtonStyle.primary, row=2)
+    async def btn_my_gang(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = get_user_data(interaction.user.id)
+        if not data["gang"]: return await interaction.response.send_message("❌ أنت لست عضواً في أي عصابة حالياً!", ephemeral=True)
+        g_name = data["gang"]
+        g_info = gangs_data.get(g_name, {"members": [], "bank": 0, "owner": None})
+        await interaction.response.send_message(f"🏴‍☠️ **بيانات العصابة [{g_name}]:**\n• القائد: <@{g_info.get('owner', 'غير معروف')}>\n• الأعضاء: {len(g_info['members'])}\n• الخزينة: **${g_info['bank']:,}**", ephemeral=True)
+
+    @discord.ui.button(label="📜 عقود العصابة", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_contracts(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = View(); view.add_item(ContractSelect())
+        await interaction.response.send_message("📜 **اختر العقد المراد تنفيذه لصالح عصابتك:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="💣 السرقات الجماعية", style=discord.ButtonStyle.danger, row=2)
+    async def btn_robberies(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = View(); view.add_item(RobberySelect())
+        await interaction.response.send_message("💣 **اختر المنشأة المراد تنفيذ السرقة عليها:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="💀 السوق الأسود", style=discord.ButtonStyle.danger, row=3)
+    async def btn_black_market(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = View(); view.add_item(BlackMarketSelect())
+        await interaction.response.send_message("💀 **قائمة المبيعات في السوق الأسود:**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
+    async def btn_start_heist(self, interaction: discord.Interaction, button: discord.ui.Button):
+        class TargetSelectView(View):
+            @discord.ui.button(label="🏦 السطو على البنك المركزي", style=discord.ButtonStyle.primary)
+            async def target_bank(self, inter: discord.Interaction, btn: Button):
+                session = HeistSession("bank", "البنك المركزي", "عصابتك", 500000)
+                await inter.response.send_message("🚨 **تم تجهيز خطة السطو على البنك المركزي!** اختر أعضاء السرقة للبدء:", view=HeistLobbyView(session))
+
+            @discord.ui.button(label="💀 السطو على عصابة منافسة", style=discord.ButtonStyle.danger)
+            async def target_gang(self, inter: discord.Interaction, btn: Button):
+                await inter.response.send_message("🎯 **اختر العصابة المستهدفة من القائمة:**", view=GangSelectView(), ephemeral=True)
+
+        await interaction.response.send_message("🎯 **اختر هدف عملية السطو المسلح:**", view=TargetSelectView(), ephemeral=True)
+
+    @discord.ui.button(label="📖 دليل الأوامر الكتابية", style=discord.ButtonStyle.primary, row=3)
+    async def btn_help_guide(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(title="📖 دليل الأوامر الكتابية المطلوبة", color=discord.Color.blue())
+        embed.add_field(name="📜 عقد العمل", value="`!عقد @اسم_اللاعب [المبلغ] [الأيام]`", inline=False)
+        embed.add_field(name="💸 تحويل كاش", value="`!تحويل @اسم_اللاعب [المبلغ]`", inline=False)
+        embed.add_field(name="🏴‍☠️ إنشاء عصابة", value="`!انشاء_عصابة [الاسم]`", inline=False)
+        embed.add_field(name="💼 الأسهم", value="`!شراء_سهم` | `!بيع_سهم` | `!اسهمي`", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ==========================================
+# 7. الأوامر المباشرة والنصية
+# ==========================================
+
+@bot.command(name="مساعدة", aliases=["اوامر", "لوحة", "داشبورد", "الاوامر"])
+async def cmd_dashboard(ctx):
+    embed = discord.Embed(
+        title="🌐 اللوحة الاقتصادية والتفاعلية العامة",
+        description="أهلاً بك! يمكنك التحكم بجميع الأنشطة عبر الأزرار أدناه.",
+        color=discord.Color.gold()
+    )
+    await ctx.send(embed=embed, view=CompleteInteractiveDashboardView())
+
+@bot.command(name="رصيدي")
+async def cmd_balance(ctx):
+    data = get_user_data(ctx.author.id)
+    await ctx.send(f"👤 **حساب {ctx.author.display_name}:**\n💵 المحفظة: **${data['wallet']:,}**\n🏦 البنك: **${data['bank']:,}**")
+
+@bot.command(name="تحويل")
+async def cmd_transfer(ctx, member: discord.Member = None, amount: int = None):
+    if not member or not amount or amount <= 0: return await ctx.send("❌ الاستخدام: `!تحويل @عضو المبلغ`")
+    sender = get_user_data(ctx.author.id)
+    receiver = get_user_data(member.id)
+    if sender["wallet"] < amount: return await ctx.send("❌ لا تملك هذا المبلغ الكاش!")
+    sender["wallet"] -= amount
+    receiver["wallet"] += amount
+    await ctx.send(f"✅ تم تحويل **${amount:,}** إلى {member.mention}")
+
+@bot.command(name="ايداع")
+async def cmd_deposit(ctx, amount: str = None):
+    data = get_user_data(ctx.author.id)
+    val = data["wallet"] if amount == "الكل" else int(amount) if amount and amount.isdigit() else 0
+    if val <= 0 or data["wallet"] < val: return await ctx.send("❌ مبلغ غير كافٍ!")
+    data["wallet"] -= val; data["bank"] += val
+    await ctx.send(f"🏦 تم إيداع **${val:,}** في البنك.")
+
+@bot.command(name="سحب")
+async def cmd_withdraw(ctx, amount: str = None):
+    data = get_user_data(ctx.author.id)
+    val = data["bank"] if amount == "الكل" else int(amount) if amount and amount.isdigit() else 0
+    if val <= 0 or data["bank"] < val: return await ctx.send("❌ لا تملك هذا الرصيد بالبنك!")
+    data["bank"] -= val; data["wallet"] += val
+    await ctx.send(f"💵 تم سحب **${val:,}** من البنك.")
+
+@bot.command(name="انشاء_عصابة")
+async def cmd_create_gang(ctx, *, name: str = None):
+    if not name: return await ctx.send("❌ اكتب اسم العصابة!")
+    data = get_user_data(ctx.author.id)
+    if data["wallet"] < 50000: return await ctx.send("❌ التأسيس يتطلب $50,000!")
+    if name in gangs_data: return await ctx.send("❌ الاسم مستخدم!")
+    data["wallet"] -= 50000
+    data["gang"] = name
+    gangs_data[name] = {"owner": ctx.author.id, "members": [ctx.author.id], "bank": 100000}
+    await ctx.send(f"🏴‍☠️ تم إنشاء عصابة **{name}** بنجاح!")
+
+@bot.command(name="شراء_سهم")
+async def buy_stock(ctx, code: str = None, amount: int = None):
+    if not code or not amount or amount <= 0: return await ctx.send("❌ الاستخدام: `!شراء_سهم [الرمز] [العدد]`")
+    code = code.upper()
+    if code not in STOCKS: return await ctx.send("❌ رمز السهم غير صحيح!")
+    total_cost = STOCKS[code]["price"] * amount
+    user_data = get_user_data(ctx.author.id)
+    if user_data["wallet"] < total_cost: return await ctx.send(f"❌ لا تملك كاش كافي! المطلوب: **${total_cost:,}**.")
+    user_data["wallet"] -= total_cost
+    user_data.setdefault("stocks", {})[code] = user_data["stocks"].get(code, 0) + amount
+    await ctx.send(f"✅ تم شراء **{amount}** سهم في **{STOCKS[code]['name']}**!")
+
+@bot.command(name="بيع_سهم")
+async def sell_stock(ctx, code: str = None, amount: int = None):
+    if not code or not amount or amount <= 0: return await ctx.send("❌ الاستخدام: `!بيع_سهم [الرمز] [العدد]`")
+    code = code.upper()
+    user_data = get_user_data(ctx.author.id)
+    if user_data.get("stocks", {}).get(code, 0) < amount: return await ctx.send("❌ لا تملك هذا العدد من الأسهم!")
+    update_stocks_market()
+    total_return = STOCKS[code]["price"] * amount
+    user_data["stocks"][code] -= amount
+    user_data["wallet"] += total_return
+    await ctx.send(f"💰 تم بيع **{amount}** سهم واستلمت **${total_return:,}**!")
+
+@bot.command(name="اسهمي")
+async def my_stocks(ctx):
+    user_data = get_user_data(ctx.author.id)
+    active = {k: v for k, v in user_data.get("stocks", {}).items() if v > 0}
+    if not active: return await ctx.send("📊 لا تملك أي أسهم حالياً.")
+    update_stocks_market()
+    msg = f"📊 **محفظة أسهم {ctx.author.display_name}:**\n\n"
+    for code, count in active.items():
+        val = STOCKS[code]["price"] * count
+        msg += f"• **{STOCKS[code]['name']} ({code})**: {count} سهم | القيمة: **${val:,}**\n"
+    await ctx.send(msg)
+
+# ==========================================
+# 8. الأوامر الإدارية
+# ==========================================
+
+@bot.command(name="اعطاء")
+@commands.has_permissions(administrator=True)
+async def admin_give_money(ctx, member: discord.Member = None, amount: int = None):
+    if not member or not amount: return await ctx.send("❌ الاستخدام: `!اعطاء @عضو المبلغ`")
+    get_user_data(member.id)["wallet"] += amount
+    await ctx.send(f"👑 تم إعطاء **${amount:,}** إلى {member.mention}")
+
+@bot.command(name="خصم")
+@commands.has_permissions(administrator=True)
+async def admin_take_money(ctx, member: discord.Member = None, amount: int = None):
+    if not member or not amount: return await ctx.send("❌ الاستخدام: `!خصم @عضو المبلغ`")
+    get_user_data(member.id)["wallet"] = max(0, get_user_data(member.id)["wallet"] - amount)
+    await ctx.send(f"⚙️ تم خصم **${amount:,}** من {member.mention}")
+
+# ==========================================
+# 9. تشغيل البوت
+# ==========================================
+TOKEN = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+
+
 
 # ==========================================
 # 7. تشغيل البوت
