@@ -1335,7 +1335,7 @@ class MainHackLobby(discord.ui.View):
                 description="نجح المهندس والفني في حل الألغاز وتجاوز أنظمة الحماية بالكامل!",
                 color=discord.Color.green()
             )
-                 await inter.channel.send(embed=embed) 
+          await inter.channel.send(embed=embed) 
 
 # ==========================================
 # 5. المكونات التفاعلية للقوائم (Selects)
