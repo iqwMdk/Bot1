@@ -977,119 +977,67 @@ import random
 import discord
 from discord.ui import View, Button
 
+## ==========================================
+# نظام السطو المطور مع التلميحات وقائمة العصابات
 # ==========================================
-# 1. نظام بيانات العصابات والسطو
-# ==========================================
-GANGS_DATA = {}  # {gang_name: {"leader": id, "members": [ids], "vault": 50000}}
 
-class HeistSession:
-    def __init__(self, target_type, target_name, attacker_gang):
-        self.target_type = target_type # "bank" أو "gang"
-        self.target_name = target_name
-        self.attacker_gang = attacker_gang
-        self.roles = {"hacker": None, "breacher": None, "cover": None}
-        self.progress = {"hacker": False, "breacher": False, "cover": False}
-        self.retries = {"hacker": 1, "breacher": 1, "cover": 1} # محاولة إضافية لكل دور
-        self.is_active = False
+class GangSelectView(View):
+    def __init__(self):
+        super().__init__(timeout=60)
+        # إنشاء قائمة منسدلة بالعصابات المسجلة
+        options = []
+        for g_name in GANGS_DATA.keys():
+            options.append(discord.SelectOption(label=g_name, description=f"خزنة العصابة: {GANGS_DATA[g_name].get('vault', 0)}$"))
+        
+        if not options:
+            options.append(discord.SelectOption(label="لا توجد عصابات مسجلة حالياً", value="none"))
 
-# ==========================================
-# 2. لوحة تحكم اختيار الأدوار وبدء السطو
-# ==========================================
-class HeistLobbyView(View):
-    def __init__(self, session: HeistSession):
-        super().__init__(timeout=180) # إعطاء 3 دقائق كاملة للعملية
+        select = discord.ui.Select(placeholder="اختر العصابة المستهدفة للسطو...", options=options)
+        select.callback = self.select_callback
+        self.add_item(select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        target_gang = interaction.data['values'][0]
+        if target_gang == "none":
+            return await interaction.response.send_message("❌ لا توجد عصابات منافسة للسطو عليها حالياً!", ephemeral=True)
+        
+        session = HeistSession("gang", target_gang, "عصابتك")
+        await interaction.response.send_message(f"🚨 **تم تجهيز خطة السطو على خزنة عصابة ({target_gang})!** اختر دورك الآن:", view=HeistLobbyView(session))
+
+# تحدي المهكر مع التلميح الذكي
+class HackerView(View):
+    def __init__(self, session):
+        super().__init__(timeout=180)
         self.session = session
+        # اختيار لون وتوليد تلميح له
+        colors = {"أحمر": "🔴 لون الدم/النار", "أزرق": "🔵 لون السماء/البحر", "أخضر": "🟢 لون الشجر/الطبيعة"}
+        self.correct_color = random.choice(list(colors.keys()))
+        self.hint = colors[self.correct_color]
 
-    @discord.ui.button(label="👨‍💻 المُهكّر (Hacker)", style=discord.ButtonStyle.primary, row=0)
-    async def select_hacker(self, interaction: discord.Interaction, button: Button):
-        if self.session.roles["hacker"]:
-            return await interaction.response.send_message("❌ هذا الدور متخذ بالفعل!", ephemeral=True)
-        self.session.roles["hacker"] = interaction.user
-        button.disabled = True
-        await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"✅ اخترت دور **المُهكّر**! انتظر بدء العملية.", ephemeral=True)
+    @discord.ui.button(label="قطع السلك الأحمر 🔴", style=discord.ButtonStyle.danger)
+    async def wire_red(self, interaction: discord.Interaction, button: Button):
+        await self.check_wire(interaction, "أحمر")
 
-    @discord.ui.button(label="💣 المُفجّر (Breacher)", style=discord.ButtonStyle.danger, row=0)
-    async def select_breacher(self, interaction: discord.Interaction, button: Button):
-        if self.session.roles["breacher"]:
-            return await interaction.response.send_message("❌ هذا الدور متخذ بالفعل!", ephemeral=True)
-        self.session.roles["breacher"] = interaction.user
-        button.disabled = True
-        await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"✅ اخترت دور **المُفجّر**! انتظر بدء العملية.", ephemeral=True)
+    @discord.ui.button(label="قطع السلك الأزرق 🔵", style=discord.ButtonStyle.primary)
+    async def wire_blue(self, interaction: discord.Interaction, button: Button):
+        await self.check_wire(interaction, "أزرق")
 
-    @discord.ui.button(label="🛡️ الحارس (Cover)", style=discord.ButtonStyle.secondary, row=0)
-    async def select_cover(self, interaction: discord.Interaction, button: Button):
-        if self.session.roles["cover"]:
-            return await interaction.response.send_message("❌ هذا الدور متخذ بالفعل!", ephemeral=True)
-        self.session.roles["cover"] = interaction.user
-        button.disabled = True
-        await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"✅ اخترت دور **الحارس**! انتظر بدء العملية.", ephemeral=True)
+    @discord.ui.button(label="قطع السلك الأخضر 🟢", style=discord.ButtonStyle.success)
+    async def wire_green(self, interaction: discord.Interaction, button: Button):
+        await self.check_wire(interaction, "أخضر")
 
-    @discord.ui.button(label="🚀 انطلاق العملية", style=discord.ButtonStyle.green, row=1)
-    async def start_heist(self, interaction: discord.Interaction, button: Button):
-        # التأكد من اكتمال الفريق
-        if not all(self.session.roles.values()):
-            return await interaction.response.send_message("⚠️ يجب تسجيل 3 أعضاء في كافة الأدوار قبل الانطلاق!", ephemeral=True)
-        
-        self.session.is_active = True
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(content="🔥 **بدأت عملية السطو! أمامكم 3 دقائق للتنسيق وإتمام الأدوار.**", view=self)
-        
-        # فتح واجهات التفاعل لكل عضو حسب دوره
-        await start_member_tasks(interaction.channel, self.session)
-
-# ==========================================
-# 3. واجهات وتحديات الأعضاء خلال السطو
-# ==========================================
-async def start_member_tasks(channel, session: HeistSession):
-    # دالة إرسال التحديات الخاصة بكل دور مع فرصة محاولة إضافية
-    embed = discord.Embed(
-        title=f"🚨 عملية سطو جارية على: {session.target_name}",
-        description="على جميع المشاركين تنفيذ مهامهم عبر الرسائل الموجهة لهم الآن!\n⏱️ **الوقت المتبقي: 3 دقائق**",
-        color=discord.Color.red()
-    )
-    await channel.send(embed=embed)
-
-    # 1. تحدي المهكر (اختيار السلك الصحيح)
-    class HackerView(View):
-        def __init__(self):
-            super().__init__(timeout=180)
-            self.correct_wire = random.choice(["أحمر", "أزرق", "أخضر"])
-
-        @discord.ui.button(label="قطع السلك الأحمر 🔴", style=discord.ButtonStyle.danger)
-        async def wire_red(self, interaction: discord.Interaction, button: Button):
-            await self.check_wire(interaction, "أحمر")
-
-        @discord.ui.button(label="قطع السلك الأزرق 🔵", style=discord.ButtonStyle.primary)
-        async def wire_blue(self, interaction: discord.Interaction, button: Button):
-            await self.check_wire(interaction, "أزرق")
-
-        @discord.ui.button(label="قطع السلك الأخضر 🟢", style=discord.ButtonStyle.success)
-        async def wire_green(self, interaction: discord.Interaction, button: Button):
-            await self.check_wire(interaction, "أخضر")
-
-        async def check_wire(self, interaction, color):
-            if interaction.user != session.roles["hacker"]:
-                return await interaction.response.send_message("هذه الشاشة مخصصة للمُهكّر فقط!", ephemeral=True)
-            
-            if color == self.correct_wire:
-                session.progress["hacker"] = True
-                await interaction.response.send_message("✅ تم تعطيل إنذار الخزنة بنجاح!", ephemeral=True)
-                self.stop()
+    async def check_wire(self, interaction, color):
+        if color == self.correct_color:
+            self.session.progress["hacker"] = True
+            await interaction.response.send_message("✅ تم فك التشفير وتعطيل نظام حماية الخزنة بنجاح!", ephemeral=True)
+            self.stop()
+        else:
+            if self.session.retries["hacker"] > 0:
+                self.session.retries["hacker"] -= 1
+                await interaction.response.send_message("⚠️ خيار خاطئ! انتبه للتلميح، لديك **محاولة أخيرة**!", ephemeral=True)
             else:
-                if session.retries["hacker"] > 0:
-                    session.retries["hacker"] -= 1
-                    await interaction.response.send_message("⚠️ خيار خاطئ! انتبه، لديك **محاولة واحدة أخيرة** الآن!", ephemeral=True)
-                else:
-                    await interaction.response.send_message("💥 خطأ ثاني! انفجر نظام الحماية وفشلت العملية!", ephemeral=True)
-                    self.stop()
-
-    # إرسال واجهة المهكر في الشات الخاص بالمستخدم
-    hacker_user = session.roles["hacker"]
-    await hacker_user.send("💻 **تحدي التهكير:** اختر السلك الصحيح لفك تشفير الخزنة:", view=HackerView())
+                await interaction.response.send_message("💥 خطأ ثاني! انفجر نظام الحماية وفشلت العملية!", ephemeral=True)
+                self.stop()
 
 # ==========================================
 # 4. زر بدء السطو المضاف للوحة الرئيسية
