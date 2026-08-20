@@ -1108,14 +1108,6 @@ async def update_user_role(member: discord.Member, work_count):
         if role not in member.roles:
             await member.add_roles(role)
 
-import discord
-from discord.ext import commands
-import asyncio
-import random
-import aiosqlite
-
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
-
 # === 1. إعداد قاعدة البيانات ===
 async def init_db():
     async with aiosqlite.connect("gangs.db") as db:
