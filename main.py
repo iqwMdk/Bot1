@@ -508,6 +508,20 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         view = discord.ui.View()
         view.add_item(BlackMarketSelect())
         await interaction.response.send_message("💀 **قائمة المبيعات في السوق الأسود:**", view=view, ephemeral=True)
+    @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
+    async def btn_start_heist(self, interaction: discord.Interaction, button: discord.ui.Button):
+        class TargetSelectView(View):
+            @discord.ui.button(label="🏦 السطو على بنك المدينة (البوت)", style=discord.ButtonStyle.primary)
+            async def target_bank(self, inter: discord.Interaction, btn: Button):
+                session = HeistSession("bank", "بنك المدينة المركزي", "عصابتك")
+                await inter.response.send_message("🚨 **تم تجهيز خطة السطو على البنك!** ليقم باقي الأعضاء باختيار أدوارهم خلال 3 دقائق:", view=HeistLobbyView(session))
+
+            @discord.ui.button(label="💀 السطو على عصابة منافسة", style=discord.ButtonStyle.danger)
+            async def target_gang(self, inter: discord.Interaction, btn: Button):
+                session = HeistSession("gang", "خزنة العصابة المنافسة", "عصابتك")
+                await inter.response.send_message("🚨 **تم تجهيز خطة السطو على العصابة!** ليقم باقي الأعضاء باختيار أدوارهم خلال 3 دقائق:", view=HeistLobbyView(session))
+
+        await interaction.response.send_message("🎯 **اختر هدف عملية السطو:**", view=TargetSelectView(), ephemeral=True)
 
     @discord.ui.button(label="📖 دليل الأوامر الكتابية", style=discord.ButtonStyle.primary, row=3)
     async def btn_help_guide(self, interaction: discord.Interaction, button: discord.ui.Button):
