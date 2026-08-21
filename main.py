@@ -1518,11 +1518,6 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         g_info = gangs_data.get(g_name, {"members": [], "bank": 0, "owner": None})
         await interaction.response.send_message(f"🏴‍☠️ **بيانات العصابة [{g_name}]:**\n• القائد: <@{g_info.get('owner', 'غير معروف')}>\n• الأعضاء: {len(g_info['members'])}\n• الخزينة: **${g_info['bank']:,}**", ephemeral=True)
 
-    @discord.ui.button(label="📜 عقود العصابة", style=discord.ButtonStyle.secondary, row=2)
-    async def btn_contracts(self, interaction: discord.Interaction, button: discord.ui.Button):
-        view = View(); view.add_item(ContractSelect())
-        await interaction.response.send_message("📜 **اختر العقد المراد تنفيذه لصالح عصابتك:**", view=view, ephemeral=True)
-
     @discord.ui.button(label="💣 السرقات الجماعية", style=discord.ButtonStyle.danger, row=2)
     async def btn_robberies(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = View(); view.add_item(RobberySelect())
@@ -1532,6 +1527,42 @@ class CompleteInteractiveDashboardView(discord.ui.View):
     async def btn_black_market(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = View(); view.add_item(BlackMarketSelect())
         await interaction.response.send_message("💀 **قائمة المبيعات في السوق الأسود:**", view=view, ephemeral=True)
+        
+    @discord.ui.button(label="🎰 لعبة الروليت", style=discord.ButtonStyle.danger, row=2)
+    async def btn_roulette_game(self, interaction: discord.Interaction, button: discord.ui.Button):
+        import random
+        outcomes = [
+            ("🔴 **استقرت العجلة على الأحمر!** فزت بمبلغ **$2,000**", True),
+            ("⬛ **استقرت العجلة على الأسود!** فزت بمبلغ **$2,000**", True),
+            ("🟢 **استقرت العجلة على الصفر الأخضر!** خسرت الرهان.", False)
+        ]
+        res, is_win = random.choice(outcomes)
+        await interaction.response.send_message(res, ephemeral=True)
+
+    @discord.ui.button(label="💣 لعبة الألغام", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_mines_game(self, interaction: discord.Interaction, button: discord.ui.Button):
+        class MinesView(View):
+            def __init__(self):
+                super().__init__(timeout=60)
+                import random
+                self.bomb = random.randint(1, 3)
+
+            async def check_box(self, inter: discord.Interaction, box_num: int):
+                if box_num == self.bomb:
+                    await inter.response.send_message("💥 **انفجار!** فتحت صندوقاً ملغوماً وخسرت الجولة.", ephemeral=True)
+                else:
+                    await inter.response.send_message("💎 **صندوق آمن!** حصلت على مكافأة **$3,500**!", ephemeral=True)
+
+            @discord.ui.button(label="📦 صندوق 1", style=discord.ButtonStyle.primary)
+            async def b1(self, inter: discord.Interaction, btn: Button): await self.check_box(inter, 1)
+
+            @discord.ui.button(label="📦 صندوق 2", style=discord.ButtonStyle.primary)
+            async def b2(self, inter: discord.Interaction, btn: Button): await self.check_box(inter, 2)
+
+            @discord.ui.button(label="📦 صندوق 3", style=discord.ButtonStyle.primary)
+            async def b3(self, inter: discord.Interaction, btn: Button): await self.check_box(inter, 3)
+
+        await interaction.response.send_message("💣 **اختر أحد الصناديق وتجنّب القنبلة:**", view=MinesView(), ephemeral=True)
 
                     
     @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
@@ -1560,6 +1591,10 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         embed.add_field(name="💸 تحويل كاش", value="`!تحويل @اسم_اللاعب [المبلغ]`", inline=False)
         embed.add_field(name="🏴‍☠️ إنشاء عصابة", value="`!انشاء_عصابة [الاسم]`", inline=False)
         embed.add_field(name="💼 الأسهم", value="`!شراء_سهم` | `!بيع_سهم` | `!اسهمي`", inline=False)
+        embed.add_field(name="📈 التداول", value="`!تداول <المبلغ>`", inline=False)
+        embed.add_field(name="💼 الاستثمار", value="`!استثمار <المبلغ>`", inline=False)
+        embed.add_field(name="🎣 رحلة صيد", value="`!صيد`", inline=False)
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==========================================
@@ -1652,6 +1687,39 @@ async def my_stocks(ctx):
         val = STOCKS[code]["price"] * count
         msg += f"• **{STOCKS[code]['name']} ({code})**: {count} سهم | القيمة: **${val:,}**\n"
     await ctx.send(msg)
+@bot.command(name="تداول", aliases=["trade"])
+async def cmd_trade(ctx, amount: int = 1000):
+    import random
+    profit_or_loss = random.choice(["win", "win", "lose"])
+    
+    if profit_or_loss == "win":
+        percent = random.randint(10, 60)
+        earnings = int(amount * (percent / 100))
+        await ctx.send(f"📈 **تداول ناجح!** ارتفعت الأسهم بنسبة **%{percent}** وحققت أرباحاً قدرها **+{earnings}$**")
+    else:
+        percent = random.randint(10, 40)
+        losses = int(amount * (percent / 100))
+        await ctx.send(f"📉 **تداول خاسر!** انخفض السوق بنسبة **%{percent}** وخسرت **-{losses}$**")
+
+@bot.command(name="صيد", aliases=["fish"])
+async def cmd_fish(ctx):
+    import random
+    catch = random.choice([
+        ("🐟 **عثرت على سمكة شعبية!** بعتها بسعر **$350**", 350),
+        ("🦈 **صيد ثمين!** علقت بقلابك سمكة قرش نادرة وتُباع بـ **$2,500**", 2500),
+        ("👞 **حذاء قديم!** لم تعثر على شيء ذي قيمة.", 0)
+    ])
+    await ctx.send(catch[0])
+
+@bot.command(name="استثمار", aliases=["invest"])
+async def cmd_invest(ctx, amount: int = 2000):
+    import random
+    outcomes = [
+        f"🏢 **نجح مشروع العقارات!** استرددت رأس مالك وحصلت على فائدة قدرها **${int(amount * 1.5)}**",
+        f"🚀 **نجحت الشركة الناشئة!** تضاعفت أرباحك إلى **${amount * 2}**",
+        f"📉 **فشل المشروع!** خسرت **${int(amount * 0.5)}** من قيمة استثمارك."
+    ]
+    await ctx.send(random.choice(outcomes))
 
 # ==========================================
 # 8. الأوامر الإدارية
