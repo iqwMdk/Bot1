@@ -1528,41 +1528,97 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         view = View(); view.add_item(BlackMarketSelect())
         await interaction.response.send_message("💀 **قائمة المبيعات في السوق الأسود:**", view=view, ephemeral=True)
         
-    @discord.ui.button(label="🎰 لعبة الروليت", style=discord.ButtonStyle.danger, row=2)
-    async def btn_roulette_game(self, interaction: discord.Interaction, button: discord.ui.Button):
-        import random
-        outcomes = [
-            ("🔴 **استقرت العجلة على الأحمر!** فزت بمبلغ **$2,000**", True),
-            ("⬛ **استقرت العجلة على الأسود!** فزت بمبلغ **$2,000**", True),
-            ("🟢 **استقرت العجلة على الصفر الأخضر!** خسرت الرهان.", False)
-        ]
-        res, is_win = random.choice(outcomes)
-        await interaction.response.send_message(res, ephemeral=True)
-
-    @discord.ui.button(label="💣 لعبة الألغام", style=discord.ButtonStyle.secondary, row=2)
+    #    @discord.ui.button(label="💣 لعبة الألغام", style=discord.ButtonStyle.danger, row=2)
     async def btn_mines_game(self, interaction: discord.Interaction, button: discord.ui.Button):
-        class MinesView(View):
-            def __init__(self):
+        # تطبيق الكولدوان اليدوي للأزرار
+        if not hasattr(self, "_mines_cooldowns"):
+            self._mines_cooldowns = {}
+        
+        import time
+        user_id = interaction.user.id
+        current_time = time.time()
+        cooldown_time = 300 # 5 دقائق
+
+        if user_id in self._mines_cooldowns:
+            elapsed = current_time - self._mines_cooldowns[user_id]
+            if elapsed < cooldown_time:
+                remaining = int(cooldown_time - elapsed)
+                minutes, seconds = divmod(remaining, 60)
+                return await interaction.response.send_message(
+                    f"⏳ **يجب عليك الانتظار {minutes} دقائق و {seconds} ثانية قبل لعب الألغام مجدداً!**", 
+                    ephemeral=True
+                )
+
+        self._mines_cooldowns[user_id] = current_time
+
+        class AdvancedMinesView(discord.ui.View):
+            def __init__(self, owner_id):
                 super().__init__(timeout=60)
+                self.owner_id = owner_id
+                self.current_earnings = 0
                 import random
-                self.bomb = random.randint(1, 3)
+                self.bombs = set(random.sample(range(12), 3))
+                self.revealed = set()
 
-            async def check_box(self, inter: discord.Interaction, box_num: int):
-                if box_num == self.bomb:
-                    await inter.response.send_message("💥 **انفجار!** فتحت صندوقاً ملغوماً وخسرت الجولة.", ephemeral=True)
-                else:
-                    await inter.response.send_message("💎 **صندوق آمن!** حصلت على مكافأة **$3,500**!", ephemeral=True)
+                for i in range(12):
+                    btn = discord.ui.Button(label="❓", style=discord.ButtonStyle.secondary, custom_id=str(i), row=i // 4)
+                    btn.callback = self.make_callback(i)
+                    self.add_item(btn)
 
-            @discord.ui.button(label="📦 صندوق 1", style=discord.ButtonStyle.primary)
-            async def b1(self, inter: discord.Interaction, btn: Button): await self.check_box(inter, 1)
+                cashout_btn = discord.ui.Button(label="💰 جمع الأرباح", style=discord.ButtonStyle.success, row=3)
+                cashout_btn.callback = self.cashout
+                self.add_item(cashout_btn)
 
-            @discord.ui.button(label="📦 صندوق 2", style=discord.ButtonStyle.primary)
-            async def b2(self, inter: discord.Interaction, btn: Button): await self.check_box(inter, 2)
+            def make_callback(self, index):
+                async def callback(inter: discord.Interaction):
+                    if inter.user.id != self.owner_id:
+                        return await inter.response.send_message("❌ هذه اللعبة ليست لك!", ephemeral=True)
+                    
+                    if index in self.revealed:
+                        return await inter.response.send_message("⚠️ فتحت هذا المربع سابقاً!", ephemeral=True)
 
-            @discord.ui.button(label="📦 صندوق 3", style=discord.ButtonStyle.primary)
-            async def b3(self, inter: discord.Interaction, btn: Button): await self.check_box(inter, 3)
+                    if index in self.bombs:
+                        for item in self.children:
+                            item.disabled = True
+                            if hasattr(item, 'custom_id') and item.custom_id and int(item.custom_id) in self.bombs:
+                                item.label = "💣"
+                                item.style = discord.ButtonStyle.danger
 
-        await interaction.response.send_message("💣 **اختر أحد الصناديق وتجنّب القنبلة:**", view=MinesView(), ephemeral=True)
+                        user_data = get_user_data(self.owner_id)
+                        user_data["wallet"] = max(0, user_data.get("wallet", 0) - 5000)
+
+                        await inter.response.edit_message(content=f"💥 **انفجار!** اخترت لغماً وخسرت جميع أرباح الجولة! وتم خصم **$5,000** من حسابك.", view=self)
+                    else:
+                        self.revealed.add(index)
+                        self.current_earnings += 1000
+                        
+                        for item in self.children:
+                            if hasattr(item, 'custom_id') and item.custom_id == str(index):
+                                item.label = "💎"
+                                item.style = discord.ButtonStyle.primary
+                                item.disabled = True
+
+                        await inter.response.edit_message(content=f"💎 **مربع آمن!** أرباحك الحالية في هذه الجولة: **${self.current_earnings:,}**\nاضغط على (💰 جمع الأرباح) لسحب الفلوس أو استمر باللعب!", view=self)
+                return callback
+
+            async def cashout(self, inter: discord.Interaction):
+                if inter.user.id != self.owner_id:
+                    return await inter.response.send_message("❌ هذه اللعبة ليست لك!", ephemeral=True)
+
+                if self.current_earnings == 0:
+                    return await inter.response.send_message("⚠️ لم تجمع أي أرباح بعد!", ephemeral=True)
+
+                for item in self.children:
+                    item.disabled = True
+
+                user_data = get_user_data(self.owner_id)
+                user_data["wallet"] = user_data.get("wallet", 0) + self.current_earnings
+
+                await inter.response.edit_message(content=f"🎉 **مبروك!** سحبت أرباحك بنجاح وحصلت على **${self.current_earnings:,}**!", view=self)
+
+        view = AdvancedMinesView(interaction.user.id)
+        await interaction.response.send_message("💣 **لعبة الألغام:** اختر المربعات بحذر! كل مربع آمن يعطيك **$1,000**. وإذا اصطدمت ببلغم تخسر أرباحك وخصم **$5,000**!", view=view, ephemeral=True)
+
 
                     
     @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
