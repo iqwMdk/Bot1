@@ -1533,9 +1533,10 @@ class CompleteInteractiveDashboardView(discord.ui.View):
         view = View(); view.add_item(BlackMarketSelect())
         await interaction.response.send_message("💀 **قائمة المبيعات في السوق الأسود:**", view=view, ephemeral=True)
 
-    @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
+                    
+            @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
     async def btn_start_heist(self, interaction: discord.Interaction, button: discord.ui.Button):
-                    class TargetSelectView(View):
+        class TargetSelectView(View):
             @discord.ui.button(label="🏦 السطو على البنك المركزي", style=discord.ButtonStyle.primary)
             async def target_bank(self, inter: discord.Interaction, btn: Button):
                 embed = discord.Embed(
@@ -1545,12 +1546,12 @@ class CompleteInteractiveDashboardView(discord.ui.View):
                 )
                 await inter.response.send_message(embed=embed, view=MainHackLobby(inter.user, inter.user), ephemeral=True)
 
-
             @discord.ui.button(label="💀 السطو على عصابة منافسة", style=discord.ButtonStyle.danger)
             async def target_gang(self, inter: discord.Interaction, btn: Button):
-                await inter.response.send_message("🎯 **اختر العصابة المستهدفة من القائمة:**", view=GangSelectView(), ephemeral=True)
+                await inter.response.send_message("🎯 **اختر العصابة المستهدفة من القائمة**", view=GangTargetSelect(), ephemeral=True)
 
         await interaction.response.send_message("🎯 **اختر هدف عملية السطو المسلح:**", view=TargetSelectView(), ephemeral=True)
+
 
     @discord.ui.button(label="📖 دليل الأوامر الكتابية", style=discord.ButtonStyle.primary, row=3)
     async def btn_help_guide(self, interaction: discord.Interaction, button: discord.ui.Button):
