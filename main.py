@@ -1535,15 +1535,15 @@ class CompleteInteractiveDashboardView(discord.ui.View):
 
     @discord.ui.button(label="🚨 بدء عملية سطو", style=discord.ButtonStyle.danger, row=3)
     async def btn_start_heist(self, interaction: discord.Interaction, button: discord.ui.Button):
-            class TargetSelectView(View):
-                  @discord.ui.button(label="🏦 السطو على البنك المركزي", style=discord.ButtonStyle.primary)
-             async def target_bank(self, inter: discord.Interaction, btn: Button):
-            embed = discord.Embed(
-                title="⚔️ التجهيز للسطو على البنك المركزي",
-                description="الرجاء انضمام أعضاء الفريق وتوزيع الأدوار قبل بدء الهجوم:",
-                color=discord.Color.gold()
-            )
-             await inter.response.send_message(embed=embed, view=MainHackLobby(inter.user, inter.user), ephemeral=True)
+                    class TargetSelectView(View):
+            @discord.ui.button(label="🏦 السطو على البنك المركزي", style=discord.ButtonStyle.primary)
+            async def target_bank(self, inter: discord.Interaction, btn: Button):
+                embed = discord.Embed(
+                    title="⚔️ التجهيز للسطو على البنك المركزي",
+                    description="الرجاء انضمام أعضاء الفريق وتوزيع الأدوار قبل بدء الهجوم:",
+                    color=discord.Color.gold()
+                )
+                await inter.response.send_message(embed=embed, view=MainHackLobby(inter.user, inter.user), ephemeral=True)
 
 
             @discord.ui.button(label="💀 السطو على عصابة منافسة", style=discord.ButtonStyle.danger)
